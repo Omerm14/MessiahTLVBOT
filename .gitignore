@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 .env
+.DS_Store
+outputs/
 data/*.db-shm
 data/*.db-wal
 
