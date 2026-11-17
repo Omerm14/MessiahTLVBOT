@@ -1,0 +1,33 @@
+name: Database
+
+# Applies new D1 migrations when they land on main. Pages deploys the app and API
+# by itself through its Git integration.
+on:
+  push:
+    branches: [main]
+    paths:
+      - migrations/**
+      - wrangler.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci || npm install --no-audit --no-fund
+      - name: Apply migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply messiah --remote

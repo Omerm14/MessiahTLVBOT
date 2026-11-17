@@ -8,3 +8,7 @@ outputs/
 data/*.db-shm
 data/*.db-wal
 data/*.db
+node_modules/
+.wrangler/
+.dev.vars
+probe-out/

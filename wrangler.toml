@@ -1,0 +1,17 @@
+# Cloudflare Pages project for Messiah: the static app in docs/, the API in functions/.
+name = "messiah"
+pages_build_output_dir = "docs"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "messiah"
+# Filled in after `wrangler d1 create messiah` (see SETUP.md).
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+# Your Cloudflare Access team domain and the application's audience tag (SETUP.md).
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""
+OWNER_EMAIL = ""

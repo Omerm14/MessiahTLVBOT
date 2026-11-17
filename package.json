@@ -1,0 +1,12 @@
+{
+  "name": "messiah",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev docs --d1 DB --binding DEV_EMAIL=owner@example.com OWNER_EMAIL=owner@example.com --port 8788",
+    "db:local": "wrangler d1 migrations apply messiah --local",
+    "db:remote": "wrangler d1 migrations apply messiah --remote"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.0"
+  }
+}

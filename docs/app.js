@@ -1,7 +1,6 @@
 const {parseListing, evaluate, resolveKind, withAiFields, DEFAULT_CRITERIA, NEIGHBORHOOD_NAMES} = window.ApartmentParser;
 const SOURCE_TYPES = ["facebook", "yad2", "madlan", "homeless", "komo", "telegram"];
 const DEFAULT_SOURCES = {facebook: true, yad2: true, madlan: true, homeless: true, komo: true, telegram: true, telegramChannels: []};
-const Sync = window.HunterSync;
 const {t} = window.I18n;
 const L = window.I18n;
 const $ = (id) => document.getElementById(id);
@@ -10,24 +9,20 @@ const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFRESH_MS = 60 * 1000;
 
 const DEFAULT_CONFIG = {
-  enabled: false, groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 20,
-  telegramChatId: "", criteria: DEFAULT_CRITERIA, alertOnReview: false, scanRequest: null,
+  enabled: false, groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 15, criteria: DEFAULT_CRITERIA, alertOnReview: false,
 };
 
 const state = {
-  secrets: null,
+  me: null,             // {email, name, role, telegramLinked}
   loaded: false,
   tab: "match",
-  raw: [],            // listings as uploaded by the extension
-  listings: {},       // id -> parsed listing
-  payload: {},        // listings file: scan status, debug, version
+  raw: {},              // id -> listing from the server
+  listings: {},         // id -> listing with parsed fields and status
+  payload: {},          // collector status: scan, debug, ai
   config: DEFAULT_CONFIG,
-  configSha: "",
-  listingsSha: "",
-  marks: {items: {}},   // shared saved/hidden marks
-  marksSha: "",
-  secretsFile: {telegramToken: "", members: []}, // owner only
-  secretsSha: "",
+  marks: {items: {}},   // shared saved / hidden / kind marks
+  since: 0,             // last server time seen, for incremental refreshes
+  members: [],
   filters: {text: "", price: "", rooms: "", sort: "new", areas: new Set(), bonuses: new Set(), sources: new Set()},
   openTexts: new Set(),
   bannerKey: null,
@@ -41,6 +36,7 @@ function esc(value) {
 const safeUrl = (url) => (/^https:\/\//i.test(url || "") ? url : "");
 const icon = (name) => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const num = (value) => Number(value).toLocaleString(L.locale());
+const isOwner = () => state.me?.role === "owner";
 
 function withDefaults(config) {
   return {
@@ -65,43 +61,34 @@ async function copy(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 
-// ---------- secrets ----------
+// ---------- server ----------
 
-// The credentials stay in the address bar on purpose: iPhone "Add to Home Screen"
-// saves the current URL, and the installed app gets its own empty storage. Keeping
-// the hash means the home-screen icon always opens signed in.
-function secretsFromLink(link) {
-  const at = String(link || "").indexOf("#");
-  if (at < 0) return null;
-  const hash = new URLSearchParams(String(link).slice(at + 1));
-  if (!hash.get("t") || !hash.get("k")) return null;
-  return {token: hash.get("t"), key: hash.get("k"), ownerKey: hash.get("o") || "", name: hash.get("n") || ""};
-}
-
-function rememberSecrets(secrets) {
-  try { localStorage.setItem("hunter-secrets", JSON.stringify(secrets)); } catch {}
-  const canonical = Sync.appLink(secrets.token, secrets.key, {ownerKey: secrets.ownerKey, name: secrets.name}).split("#")[1];
-  if (location.hash.slice(1) !== canonical) history.replaceState(null, "", `${location.pathname}#${canonical}`);
-}
-
-function readSecrets() {
-  let secrets = secretsFromLink(location.href);
-  if (!secrets) {
-    try {
-      const saved = JSON.parse(localStorage.getItem("hunter-secrets") || "null");
-      if (saved?.token && saved?.key) secrets = saved;
-    } catch {}
+class ApiError extends Error {
+  constructor(status, code, message) {
+    super(message || code);
+    this.status = status;
+    this.code = code;
   }
-  if (secrets) rememberSecrets(secrets);
-  return secrets;
 }
 
-// ---------- data ----------
+async function api(path, {method = "GET", body} = {}) {
+  const response = await fetch(`/api/${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: body ? {"content-type": "application/json"} : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  // Cloudflare Access sends an expired session to its login page.
+  if (response.redirected && !response.url.includes("/api/")) throw new ApiError(401, "not_signed_in");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new ApiError(response.status, data.error || "error", data.message), {email: data.email});
+  return data;
+}
 
 function reparse() {
   const criteria = state.config.criteria;
   const listings = {};
-  for (const raw of state.raw) {
+  for (const raw of Object.values(state.raw)) {
     const parsed = withAiFields(parseListing(raw.text, raw.url), raw.ai);
     const mark = state.marks.items[raw.id] || {};
     const kindInfo = resolveKind(parsed, raw.ai, mark.kind);
@@ -115,83 +102,56 @@ function reparse() {
 }
 
 async function refresh() {
-  const {token, key} = state.secrets;
   try {
-    const [configFile, listingsFile, marksFile, secretsFile] = await Promise.all([
-      Sync.readFile(token, Sync.FILES.config),
-      Sync.readFile(token, Sync.FILES.listings),
-      Sync.readFile(token, Sync.FILES.state),
-      isOwner() ? Sync.readFile(token, Sync.FILES.secrets) : null,
-    ]);
-    if (configFile && configFile.sha !== state.configSha) {
-      state.config = withDefaults(await Sync.decryptJson(key, configFile.text));
-      state.configSha = configFile.sha;
-    }
-    if (listingsFile && listingsFile.sha !== state.listingsSha) {
-      state.payload = await Sync.decryptJson(key, listingsFile.text);
-      state.raw = state.payload.listings || [];
-      state.listingsSha = listingsFile.sha;
-    }
-    if (marksFile && marksFile.sha !== state.marksSha) {
-      state.marks = Sync.mergeMarks(state.marks, await Sync.decryptJson(key, marksFile.text));
-      state.marksSha = marksFile.sha;
-    }
-    if (secretsFile && secretsFile.sha !== state.secretsSha) {
-      state.secretsFile = {telegramToken: "", members: [], ...(await Sync.decryptJson(state.secrets.ownerKey, secretsFile.text))};
-      state.secretsSha = secretsFile.sha;
-    }
+    const [data, config] = await Promise.all([api(`listings?since=${state.since}`), api("settings")]);
+    for (const listing of data.listings || []) state.raw[listing.id] = listing;
+    const cutoff = Date.now() - 45 * 86400000;
+    for (const [id, listing] of Object.entries(state.raw)) if (listing.lastSeen < cutoff) delete state.raw[id];
+    state.since = Math.floor(data.now || 0) - 5000;
+    state.marks.items = data.marks || {};
+    const status = data.status || {};
+    state.payload = {scan: status.scan || {}, debug: status.debug || {}, ai: status.ai || {}, updatedAt: status.scan?.updatedAt};
+    state.pendingRequest = status.scanRequest || state.pendingRequest;
+    state.config = withDefaults(config);
     showBanner(null);
   } catch (error) {
-    if (error.status === 401) showBanner("errKey");
-    else if (error.name === "OperationError") showBanner("errOldLink");
-    else showBanner("errLoad", error.message);
+    if (error.status === 401 || error.status === 403) return showGate(error);
+    showBanner("errLoad", error.message);
   }
   state.loaded = true;
   reparse();
   render();
 }
 
-const isOwner = () => !!state.secrets?.ownerKey;
-
-// Save/hide marks are shared: read the latest copy, merge, write; retry on conflicts.
-let marksTimer = null;
-function saveMarksSoon() {
-  clearTimeout(marksTimer);
-  marksTimer = setTimeout(async () => {
-    const {token, key} = state.secrets;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        const latest = await Sync.readFile(token, Sync.FILES.state);
-        if (latest) state.marks = Sync.mergeMarks(await Sync.decryptJson(key, latest.text), state.marks);
-        state.marksSha = await Sync.writeFile(token, Sync.FILES.state, await Sync.encryptJson(key, state.marks),
-          "update saved/hidden [skip ci]", latest?.sha);
-        break;
-      } catch (error) {
-        if (attempt === 3) showBanner("errSave", error.message);
-      }
-    }
-    reparse();
-    render();
-  }, 800);
-}
-
-async function writeSecrets(patch) {
-  const next = {...state.secretsFile, ...patch};
-  state.secretsSha = await Sync.writeEncrypted(state.secrets.token, state.secrets.ownerKey, Sync.FILES.secrets,
-    next, "update private settings [skip ci]", state.secretsSha || undefined);
-  state.secretsFile = next;
-}
-
-async function writeConfig(config) {
-  state.configSha = await Sync.writeEncrypted(state.secrets.token, state.secrets.key, Sync.FILES.config,
-    config, "update settings [skip ci]", state.configSha || undefined);
-  state.config = withDefaults(config);
+async function saveMark(id, patch) {
+  const previous = state.marks.items[id] || {};
+  state.marks.items[id] = {...previous, ...patch, by: state.me?.name || "", at: Date.now()};
+  reparse();
+  render();
+  try {
+    const {mark} = await api("marks", {method: "POST", body: {id, ...patch}});
+    state.marks.items[id] = mark;
+  } catch (error) {
+    state.marks.items[id] = previous;
+    showBanner("errSave", error.message);
+  }
+  reparse();
+  render();
 }
 
 async function requestScan(mode) {
-  await writeConfig({...state.config, scanRequest: {mode, at: Date.now()}});
+  await api("scan", {method: "POST", body: {mode}});
   state.pendingRequest = {mode, at: Date.now()};
   render();
+}
+
+function showGate(error) {
+  $("app").hidden = true;
+  $("gate").hidden = false;
+  const invited = error.code !== "not_invited";
+  $("gateText").textContent = invited ? t("gateSignedOut") : t("gateNotInvited", error.email || "");
+  $("gateAction").textContent = invited ? t("gateSignIn") : t("gateOtherAccount");
+  $("gateAction").href = invited ? location.pathname : "/cdn-cgi/access/logout";
 }
 
 // ---------- rendering ----------
@@ -395,9 +355,7 @@ function render() {
   $("filtersCount").textContent = filters;
   renderEmpty(visible.length, all.length);
   const c = state.config;
-  const tgDone = !isOwner() || !!(state.secretsFile.telegramToken && c.telegramChatId);
-  $("onboarding").hidden = !state.loaded || (tgDone && c.enabled);
-  $("stepTg").classList.toggle("done", tgDone);
+  $("onboarding").hidden = !state.loaded || !isOwner() || c.enabled;
   $("stepOn").classList.toggle("done", c.enabled);
   renderStatus();
   renderBanner();
@@ -417,79 +375,68 @@ function clearFilters() {
 function debugReport() {
   const p = state.payload;
   const scan = p.scan || {};
-  const lines = [`extension ${p.version || "?"} · listings ${state.raw.length} · synced ${p.updatedAt ? new Date(p.updatedAt).toISOString() : "never"}`,
+  const lines = [`collector · listings ${Object.keys(state.raw).length} · updated ${p.updatedAt ? new Date(p.updatedAt).toISOString() : "never"}`,
     `scan: ${scan.running ? "running" : "idle"} ${scan.mode || ""} · error: ${scan.lastError || "none"}`];
   const all = Object.values(state.listings);
   const filtered = all.filter((l) => l.status === "filtered").length;
   lines.push(`filtered ${filtered}/${all.length} · merged places ${all.reduce((n, l) => n + Math.max(0, l.sources.length - 1), 0)} · AI ${p.ai?.usage?.calls || 0} calls${p.ai?.error ? ` · ${p.ai.error}` : ""}`);
   for (const [url, d] of Object.entries(p.debug || {})) {
     lines.push("", `[${d.source || "facebook"}] ${(d.title || "").slice(0, 40)} ${url.replace("https://www.facebook.com/groups/", "g/")}${d.blocked ? " · BLOCKED" : ""}`);
-    lines.push(`  units ${d.units ?? "?"} · message-nodes ${d.withMessageNode ?? "?"} · links ${d.withPermalink ?? "?"} · posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"} · new ${d.fresh ?? "?"} · merged ${d.merged ?? "?"} · filtered ${d.filtered ?? "?"}`);
+    lines.push(`  posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"} · new ${d.fresh ?? "?"} · merged ${d.merged ?? "?"} · filtered ${d.filtered ?? "?"}${d.error ? ` · ${d.error}` : ""}`);
     (d.samples || []).forEach((sample) => lines.push(`  > ${sample.replace(/\s+/g, " ").slice(0, 120)}`));
   }
   if (!Object.keys(p.debug || {}).length) lines.push("", t("noScanYet"));
   return lines.join("\n");
 }
 
-function personalLink() {
-  const {token, key, ownerKey, name} = state.secrets;
-  return Sync.appLink(token, key, {ownerKey, name});
-}
-
-function qrSvg(text) {
-  if (!window.qrcode) return "";
-  const qr = window.qrcode(0, "M");
-  qr.addData(text);
-  qr.make();
-  return qr.createSvgTag({cellSize: 4, margin: 3, scalable: true});
-}
-
 function renderMembers() {
-  const members = state.secretsFile.members || [];
-  $("members").innerHTML = members.length ? members.map((m, i) => `
+  $("members").innerHTML = state.members.length ? state.members.map((m) => `
     <div class="member">
-      <div class="member-head"><b>${esc(m.name)}</b><span class="hint">${esc(t("memberAdded", L.timeAgo(m.at)))}</span></div>
-      <div class="member-actions">
-        <button type="button" class="btn ghost small" data-member-copy="${i}">${t("copyMemberLink")}</button>
-        <button type="button" class="btn ghost small" data-member-qr="${i}">${t("showQr")}</button>
-        <button type="button" class="btn ghost small danger" data-member-remove="${i}">${t("remove")}</button>
-      </div>
-      <div class="qr" id="memberQr${i}" hidden></div>
+      <div class="member-head"><b>${esc(m.name)}</b><span class="hint" dir="ltr">${esc(m.email)}</span>
+        ${m.role === "owner" ? `<span class="hint">${t("ownerLabel")}</span>` : ""}</div>
+      ${m.role === "owner" ? "" : `<div class="member-actions">
+        <button type="button" class="btn ghost small danger" data-member-remove="${esc(m.email)}">${t("remove")}</button></div>`}
     </div>`).join("") : `<p class="hint">${t("noMembers")}</p>`;
+}
+
+async function loadMembers() {
+  if (!isOwner()) return;
+  try {
+    state.members = await api("members");
+  } catch {
+    state.members = [];
+  }
+  renderMembers();
 }
 
 function fillSettings() {
   const c = state.config;
-  $("sToken").value = state.secretsFile.telegramToken || "";
-  document.querySelectorAll("[data-owner-only]").forEach((el) => { el.hidden = !isOwner(); });
-  renderMembers();
-  $("sChat").value = c.telegramChatId;
-  $("sOwnerChat").value = state.secretsFile.ownerChatId || "";
-  $("sAiKey").value = state.secretsFile.anthropicKey || "";
-  $("sRoommates").checked = !!c.criteria.includeRoommates;
-  $("sSublets").checked = !!c.criteria.includeSublets;
-  $("sSources").innerHTML = SOURCE_TYPES.map((type) => `
-    <label class="switch-row"><span><b>${esc(t("source")[type])}</b><small>${esc(t("sourceHint")[type])}</small></span>
-      <input type="checkbox" role="switch" class="switch" data-source="${type}" ${c.sources[type] !== false ? "checked" : ""}></label>`).join("");
-  $("sChannels").value = (c.sources.telegramChannels || []).join("\n");
-  const ai = state.payload.ai || {};
-  $("aiStatus").textContent = ai.error ? ai.error
-    : ai.usage?.calls ? t("aiUsage", ai.usage.calls, Math.round(((ai.usage.input || 0) * 0.1 + (ai.usage.output || 0) * 0.5) / 1e4) / 100)
-    : "";
+  const owner = isOwner();
+  document.querySelectorAll("[data-owner-only]").forEach((el) => { el.hidden = !owner; });
+  $("ownerFields").disabled = !owner;
+  $("memberNote").hidden = owner;
   $("sAlertReview").checked = c.alertOnReview;
   $("sMaxPrice").value = c.criteria.maxPrice;
   $("sMinRooms").value = c.criteria.minRooms;
   $("sMinBaths").value = c.criteria.minBathrooms;
+  $("sRoommates").checked = !!c.criteria.includeRoommates;
+  $("sSublets").checked = !!c.criteria.includeSublets;
   $("sAreas").innerHTML = NEIGHBORHOOD_NAMES.map((name) =>
     chip(L.area(name), c.criteria.neighborhoods.includes(name), `data-setting-area="${esc(name)}"`)).join("");
+  $("sSources").innerHTML = SOURCE_TYPES.map((type) => `
+    <label class="switch-row"><span><b>${esc(t("source")[type])}</b><small>${esc(t("sourceHint")[type])}</small></span>
+      <input type="checkbox" role="switch" class="switch" data-source="${type}" ${c.sources[type] !== false ? "checked" : ""}></label>`).join("");
+  $("sChannels").value = (c.sources.telegramChannels || []).join("\n");
   $("sGroups").value = c.groupUrls.join("\n");
-  $("sInterval").value = c.intervalMinutes;
   $("sEnabled").checked = c.enabled;
+  $("appUrl").textContent = `${location.origin}/`;
+  const ai = state.payload.ai || {};
+  $("aiStatus").textContent = ai.error ? ai.error
+    : ai.usage?.calls ? t("aiUsage", ai.usage.calls, Math.round(((ai.usage.input || 0) * 0.1 + (ai.usage.output || 0) * 0.5) / 1e4) / 100)
+    : "";
   setSettingsStatus("");
   $("debugView").textContent = debugReport();
-  const svg = qrSvg(personalLink());
-  if (svg) $("qr").innerHTML = svg;
-  else $("qr").textContent = t("qrFailed");
+  loadMembers();
 }
 
 let lastFocus = null;
@@ -527,17 +474,9 @@ function readSettings() {
   const groupUrls = $("sGroups").value.split("\n").map((s) => s.trim()).filter(Boolean);
   const bad = groupUrls.find((url) => !/^https:\/\/(www\.)?facebook\.com\/groups\//i.test(url));
   if (bad) throw new Error(t("badGroupUrl", bad));
-  const token = $("sToken").value.trim();
-  if (token && !/^\d+:[\w-]{20,}$/.test(token)) throw new Error(t("badToken"));
-  const chat = $("sChat").value.split(/[,\s]+/).filter(Boolean).join(", ");
-  if (chat && !chat.split(", ").every((id) => /^-?\d+$/.test(id))) throw new Error(t("badChat"));
   const areas = [...$("sAreas").querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.settingArea);
-  const aiKey = $("sAiKey").value.trim();
-  if (aiKey && !/^sk-ant-[\w-]{20,}$/.test(aiKey)) throw new Error(t("badAiKey"));
   return {
     ...state.config,
-    telegramToken: token, // removed before saving; stored in the owner-only file
-    telegramChatId: chat,
     alertOnReview: $("sAlertReview").checked,
     criteria: {
       maxPrice: Number($("sMaxPrice").value) || DEFAULT_CRITERIA.maxPrice,
@@ -552,13 +491,13 @@ function readSettings() {
       telegramChannels: $("sChannels").value.split(/[\n,]+/).map((c) => c.trim()).filter(Boolean).slice(0, 30),
     },
     groupUrls: groupUrls.slice(0, 60),
-    intervalMinutes: Math.max(10, Number($("sInterval").value) || 20),
     enabled: $("sEnabled").checked,
   };
 }
 
 async function saveSettings(event) {
   event?.preventDefault();
+  if (!isOwner()) return false;
   let config;
   try {
     config = readSettings();
@@ -569,15 +508,8 @@ async function saveSettings(event) {
   setSettingsStatus(t("saving"));
   const submit = $("settingsForm").querySelector('[type="submit"]');
   submit.disabled = true;
-  const {telegramToken, ...publicConfig} = config;
-  const ownerChatId = $("sOwnerChat").value.replace(/\D/g, "");
-  const anthropicKey = $("sAiKey").value.trim();
   try {
-    await writeConfig(publicConfig);
-    const f = state.secretsFile;
-    if (isOwner() && (telegramToken !== (f.telegramToken || "") || ownerChatId !== (f.ownerChatId || "") || anthropicKey !== (f.anthropicKey || ""))) {
-      await writeSecrets({telegramToken, ownerChatId, anthropicKey});
-    }
+    state.config = withDefaults(await api("settings", {method: "PUT", body: config}));
   } catch (error) {
     setSettingsStatus(t("errSave", error.message), true);
     return false;
@@ -592,14 +524,6 @@ async function saveSettings(event) {
 
 // ---------- sharing (owner only) ----------
 
-function tokenLinkFor(name) {
-  const params = new URLSearchParams({
-    name: `Apartment Hunter - ${name}`.slice(0, 40), description: "Shared apartment board",
-    target_name: "Omerm14", expires_in: "none", contents: "write",
-  });
-  return `https://github.com/settings/personal-access-tokens/new?${params}`;
-}
-
 function setShareStatus(text, isError = false) {
   $("shareStatus").textContent = text;
   $("shareStatus").classList.toggle("err", isError);
@@ -607,53 +531,25 @@ function setShareStatus(text, isError = false) {
 
 async function addMember() {
   const name = $("mName").value.trim().slice(0, 30);
-  const token = $("mToken").value.trim();
-  if (!name) return setShareStatus(t("writeName"), true);
-  if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(token)) return setShareStatus(t("notGithubKey"), true);
-  setShareStatus(t("checkingKey"));
+  const email = $("mEmail").value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setShareStatus(t("badEmail"), true);
   try {
-    await Sync.checkToken(token);
-  } catch (error) {
-    return setShareStatus(error.status === 401 ? t("keyInvalid") : t("keyNoAccess", error.message), true);
-  }
-  const link = Sync.appLink(token, state.secrets.key, {name});
-  const chatId = $("mChat").value.replace(/\D/g, "");
-  const members = [...(state.secretsFile.members || []), {name, link, chatId, at: Date.now()}];
-  try {
-    await writeSecrets({members});
+    await api("members", {method: "POST", body: {name, email}});
   } catch (error) {
     return setShareStatus(t("errSave", error.message), true);
   }
   $("mName").value = "";
-  $("mToken").value = "";
-  $("mChat").value = "";
-  renderMembers();
-  const index = members.length - 1;
-  $(`memberQr${index}`).innerHTML = qrSvg(link);
-  $(`memberQr${index}`).hidden = false;
-  await copy(link);
-  setShareStatus(t("memberReady", name));
+  $("mEmail").value = "";
+  setShareStatus(t("memberInvited", name || email, `${location.origin}/`));
+  loadMembers();
 }
 
-async function memberAction(target) {
-  const members = state.secretsFile.members || [];
-  const index = Number(target.dataset.memberCopy ?? target.dataset.memberQr ?? target.dataset.memberRemove);
-  const member = members[index];
-  if (!member) return;
-  if (target.dataset.memberCopy != null) {
-    await copy(member.link);
-    return setShareStatus(t("memberCopied", member.name));
-  }
-  if (target.dataset.memberQr != null) {
-    const box = $(`memberQr${index}`);
-    box.innerHTML = qrSvg(member.link);
-    box.hidden = !box.hidden;
-    return;
-  }
+async function removeMember(target) {
+  const email = target.dataset.memberRemove;
   // Removing needs a second click on the same button instead of a browser dialog.
   if (target.dataset.confirming !== "1") {
     target.dataset.confirming = "1";
-    target.textContent = t("confirmRemove", member.name);
+    target.textContent = t("confirmRemove", email);
     setTimeout(() => {
       if (!target.isConnected) return;
       target.dataset.confirming = "";
@@ -662,13 +558,12 @@ async function memberAction(target) {
     return;
   }
   try {
-    await writeSecrets({members: members.filter((_, i) => i !== index)});
+    await api(`members?email=${encodeURIComponent(email)}`, {method: "DELETE"});
   } catch (error) {
     return setShareStatus(t("errSave", error.message), true);
   }
-  renderMembers();
-  setShareStatus(t("memberRemoved", member.name));
-  window.open("https://github.com/settings/personal-access-tokens", "_blank", "noopener");
+  setShareStatus(t("memberRemoved", email));
+  loadMembers();
 }
 
 // ---------- events ----------
@@ -683,7 +578,7 @@ document.addEventListener("click", async (event) => {
     return render();
   }
   if (target.matches("[data-open-settings]")) return openSettings();
-  if (target.dataset.memberCopy || target.dataset.memberQr || target.dataset.memberRemove) return memberAction(target);
+  if (target.dataset.memberRemove) return removeMember(target);
   if (target.dataset.tab) { state.tab = target.dataset.tab; return render(); }
   if (target.dataset.area || target.dataset.bonus || target.dataset.source) {
     const set = target.dataset.area ? state.filters.areas : target.dataset.bonus ? state.filters.bonuses : state.filters.sources;
@@ -707,14 +602,10 @@ document.addEventListener("click", async (event) => {
   if (action === "kind-rental" || action === "kind-other") {
     // A person's call on whether this is an apartment. The AI learns from these.
     const kind = action === "kind-rental" ? "rental" : "other";
-    state.marks.items[id] = {...previous, kind: previous.kind === kind ? "" : kind, by: state.secrets.name || "", at: Date.now()};
-  } else {
-    const field = action === "save" ? "saved" : "hidden";
-    state.marks.items[id] = {...previous, [field]: !previous[field], by: state.secrets.name || "", at: Date.now()};
+    return saveMark(id, {kind: previous.kind === kind ? "" : kind});
   }
-  reparse();
-  render();
-  saveMarksSoon();
+  const field = action === "save" ? "saved" : "hidden";
+  return saveMark(id, {[field]: !previous[field]});
 });
 
 $("openSettings").addEventListener("click", openSettings);
@@ -735,53 +626,27 @@ $("backfill").addEventListener("click", async () => {
   await requestScan("backfill");
   setSettingsStatus(t("backfillRequested"));
 });
-$("testTelegram").addEventListener("click", async () => {
-  const token = $("sToken").value.trim();
-  const chats = $("sChat").value.split(/[,\s]+/).filter(Boolean);
-  if (!token || !chats.length) return setSettingsStatus(t("fillTelegramFirst"), true);
-  setSettingsStatus(t("sending"));
-  try {
-    for (const chat of chats) {
-      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({chat_id: chat, text: `✅ ${t("telegramTestText")}`}),
-      });
-      const result = await response.json();
-      if (!result.ok) throw new Error(`${chat}: ${result.description}`);
-    }
-    setSettingsStatus(t("telegramSent", chats.length));
-  } catch (error) {
-    setSettingsStatus(t("telegramError", error.message), true);
-  }
-});
 $("addMember").addEventListener("click", addMember);
-$("mName").addEventListener("input", () => {
-  $("mTokenLink").href = tokenLinkFor($("mName").value.trim() || "partner");
-});
 $("copyLink").addEventListener("click", async () => {
-  await copy(personalLink());
+  await copy(`${location.origin}/`);
   setSettingsStatus(t("linkCopied"));
+});
+$("extensionKey").addEventListener("click", async () => {
+  try {
+    const {key} = await api("extension-key", {method: "POST"});
+    $("extensionKeyValue").textContent = key;
+    $("extensionKeyValue").hidden = false;
+    await copy(key);
+    setSettingsStatus(t("extensionKeyCopied"));
+  } catch (error) {
+    setSettingsStatus(t("errSave", error.message), true);
+  }
 });
 $("copyDebug").addEventListener("click", async () => {
   const text = debugReport();
   $("debugView").textContent = text;
   await copy(text);
   setSettingsStatus(t("reportCopied"));
-});
-$("logout").addEventListener("click", () => {
-  try { localStorage.removeItem("hunter-secrets"); } catch {}
-  location.replace(location.pathname);
-});
-$("pasteForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const secrets = secretsFromLink($("pasteLink").value.trim());
-  if (!secrets) {
-    $("pasteStatus").textContent = t("pasteBad");
-    return;
-  }
-  rememberSecrets(secrets);
-  location.reload();
 });
 $("installTipClose").addEventListener("click", () => {
   $("installTip").hidden = true;
@@ -796,11 +661,13 @@ $("fSort").addEventListener("change", (e) => { state.filters.sort = e.target.val
 
 // ---------- start ----------
 
-L.apply();
-state.secrets = readSecrets();
-if (!state.secrets) {
-  $("gate").hidden = false;
-} else {
+async function start() {
+  L.apply();
+  try {
+    state.me = await api("me");
+  } catch (error) {
+    return showGate(error);
+  }
   $("app").hidden = false;
   // Show the add-to-home-screen tip in iPhone Safari (not yet installed), once.
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -813,3 +680,4 @@ if (!state.secrets) {
   setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 }
+start();

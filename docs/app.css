@@ -427,6 +427,14 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .hint a { font-weight: 700; }
 .hint.fine { font-size: 13px; padding-top: 20px; }
 .members { display: grid; gap: 8px; }
+fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.plain:disabled .switch, fieldset.plain:disabled .chip { cursor: default; }
+fieldset.plain:disabled section > :not(h3):not(.hint) { opacity: .55; }
+fieldset.plain:disabled #backfill { display: none; }
+.owner-note { padding-top: 16px; }
+.row.two { grid-template-columns: 1fr 1.4fr; }
+.app-url { margin: 0; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px 10px; overflow-wrap: anywhere; }
+#logout { display: inline-block; text-decoration: none; }
 .member { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 10px; }
 .member-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .member-actions { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -41,18 +41,8 @@
         <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-logo"/></svg></span>
         <h1 data-i18n="appName">Messiah</h1>
       </div>
-      <p data-i18n="gateLead">כדי לפתוח את הלוח צריך קישור אישי.</p>
-      <ul class="gate-steps">
-        <li data-i18n-html="gateDesktop"><b>במחשב:</b> לחץ על אייקון Messiah בסרגל של Chrome.</li>
-        <li data-i18n-html="gatePhone"><b>בטלפון:</b> פתח את הלוח במחשב, עבור אל <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.</li>
-        <li data-i18n-html="gateTelegram"><b>מטלגרם:</b> לחץ על ״פתח את הלוח״ בכל התראה על דירה.</li>
-      </ul>
-      <form id="pasteForm" class="paste" novalidate>
-        <label class="field"><span data-i18n="pasteLabel">או הדבק כאן את הקישור האישי</span>
-          <input id="pasteLink" type="url" dir="ltr" autocomplete="off" placeholder="https://omerm14.github.io/MessiahTLVBOT/#t=…"></label>
-        <button type="submit" class="btn primary" data-i18n="pasteOpen">פתח</button>
-        <p id="pasteStatus" class="status-line err" role="alert"></p>
-      </form>
+      <p id="gateText"></p>
+      <a id="gateAction" class="btn primary" href="/cdn-cgi/access/logout"></a>
       <button type="button" class="btn ghost small lang-toggle" data-lang-toggle>English</button>
     </div>
   </section>
@@ -88,7 +78,6 @@
         <div>
           <h2 data-i18n="onbTitle">עוד שני צעדים והלוח מתחיל להתמלא</h2>
           <ol>
-            <li id="stepTg"><span class="step-mark" aria-hidden="true"><svg class="ic"><use href="#i-check"/></svg></span><span data-i18n-html="onbTelegram">בהגדרות: הדבק את טוקן הבוט ואת מזהה הצ׳אט. שלח <bdi dir="ltr">/start</bdi> לבוט בטלגרם כדי לקבל את המזהה.</span></li>
             <li id="stepOn"><span class="step-mark" aria-hidden="true"><svg class="ic"><use href="#i-check"/></svg></span><span data-i18n-html="onbEnable">סמן <b>ניטור פעיל</b> ושמור. הסריקה הראשונה מביאה את השבועיים האחרונים (20 עד 30 דקות), כל עוד המחשב ער ו־Chrome פתוח.</span></li>
           </ol>
         </div>
@@ -189,6 +178,8 @@
       <button type="button" id="closeSettings" class="icon-btn" aria-label="סגור" data-i18n-aria="close"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
     <form id="settingsForm" class="drawer-body" novalidate>
+      <fieldset id="ownerFields" class="plain">
+      <p class="hint owner-note" id="memberNote" hidden data-i18n="memberNote">רק בעל הלוח יכול לשנות את הגדרות החיפוש.</p>
       <section class="group">
         <h3 data-i18n="whatImLookingFor">מה אני מחפש</h3>
         <div class="row">
@@ -204,84 +195,65 @@
 
       <section class="group">
         <h3 data-i18n="sourcesTitle">מקורות</h3>
-        <p class="hint" data-i18n="sourcesLead">כל המקורות נקראים מה־Chrome במחשב שלך, כמו פייסבוק. יד2, מדלן, הומלס וקומו נסרקים לפי המחיר והחדרים שבחרת.</p>
+        <p class="hint" data-i18n="sourcesLead">השרת סורק את המקורות כל כמה דקות, גם כשהמחשב כבוי. פייסבוק נסרק דרך התוסף ל־Chrome.</p>
+        <label class="switch-row"><span><b data-i18n="monitoring">ניטור פעיל</b><small data-i18n="monitoringHint">סורק אוטומטית ושולח התראות</small></span>
+          <input id="sEnabled" type="checkbox" role="switch" class="switch"></label>
         <div class="source-list" id="sSources"></div>
         <label class="field"><span data-i18n="telegramChannels">ערוצי טלגרם ציבוריים, אחד בכל שורה (למשל ‎@telavivrent)</span>
           <textarea id="sChannels" dir="ltr" rows="3" placeholder="@channel_name"></textarea></label>
-      </section>
-
-      <section class="group" data-owner-only>
-        <h3 data-i18n="aiTitle">סינון חכם (AI)</h3>
-        <p class="hint" data-i18n="aiLead">פוסטים שהכללים לא בטוחים לגביהם נבדקים ב־Claude Haiku: האם זו באמת דירה להשכרה. בלי מפתח הם עוברים ל״לבדיקה״. עלות משוערת: כמה סנטים בחודש.</p>
-        <label class="field"><span data-i18n="aiKey">מפתח Anthropic API (רק אתה רואה אותו)</span>
-          <input id="sAiKey" type="password" autocomplete="off" dir="ltr" placeholder="sk-ant-…"></label>
-        <p id="aiStatus" class="hint"></p>
-      </section>
-
-      <section class="group">
-        <h3 data-i18n="telegram">התראות בטלגרם</h3>
-        <label class="field" data-owner-only><span data-i18n="botToken">טוקן הבוט מ־BotFather (רק אתה רואה אותו)</span>
-          <input id="sToken" type="password" autocomplete="off" dir="ltr" placeholder="123456:ABC…"></label>
-        <label class="field"><span data-i18n-html="chatIds">מזהי צ׳אט, מופרדים בפסיק. כל אחד שולח <bdi dir="ltr">/start</bdi> לבוט ומקבל את המספר שלו</span>
-          <input id="sChat" dir="ltr" placeholder="123456789, 987654321"></label>
-        <label class="field" data-owner-only><span data-i18n="ownerChat">מזהה הצ׳אט שלך (כפתור ״פתח את הלוח״ בהתראות שלך יכניס אותך מחובר)</span>
-          <input id="sOwnerChat" dir="ltr" inputmode="numeric" placeholder="123456789"></label>
-        <label class="check"><input id="sAlertReview" type="checkbox"><span data-i18n="alertReview">שלח התראה גם על דירות שחסרים בהן פרטים</span></label>
-        <button type="button" id="testTelegram" class="btn ghost small" data-owner-only data-i18n="testTelegram">שלח הודעת בדיקה</button>
-      </section>
-
-      <section class="group">
-        <h3 data-i18n="groupsAndScan">קבוצות וסריקה</h3>
-        <label class="switch-row"><span><b data-i18n="monitoring">ניטור פעיל</b><small data-i18n="monitoringHint">סורק אוטומטית כל עוד המחשב ער ו־Chrome פתוח</small></span>
-          <input id="sEnabled" type="checkbox" role="switch" class="switch"></label>
-        <label class="field"><span data-i18n="interval">לסרוק כל (דקות, לפחות 10)</span>
-          <input id="sInterval" type="number" min="10" max="180" inputmode="numeric"></label>
         <label class="field"><span data-i18n="groupUrls">קבוצות פייסבוק, קישור אחד בכל שורה</span>
-          <textarea id="sGroups" dir="ltr" rows="6"></textarea></label>
+          <textarea id="sGroups" dir="ltr" rows="5"></textarea></label>
+        <label class="check"><input id="sAlertReview" type="checkbox"><span data-i18n="alertReview">שלח התראה גם על דירות שחסרים בהן פרטים</span></label>
         <button type="button" id="backfill" class="btn ghost small" data-i18n="backfill">סרוק שוב שבועיים אחורה</button>
       </section>
+      </fieldset>
 
       <section class="group" data-owner-only>
-        <h3 data-i18n="shareTitle">שיתוף הלוח</h3>
-        <p class="hint" data-i18n="shareLead">מי שתשתף יראה את אותן דירות, ומה שאחד מכם שומר או מסתיר יופיע אצל כולם. הוא לא יראה את טוקן הבוט. לכל אחד מפתח GitHub משלו, כך שאפשר לבטל גישה בכל רגע.</p>
+        <h3 data-i18n="shareTitle">מי משתמש בלוח</h3>
+        <p class="hint" data-i18n="shareLead">הזמן אנשים לפי אימייל. הם נכנסים עם Google או עם קוד חד־פעמי למייל, ורואים את אותן דירות. מה שאחד שומר או מסתיר מופיע אצל כולם.</p>
         <div id="members" class="members"></div>
-        <label class="field"><span data-i18n="memberName">1. השם של מי שמצטרף</span><input id="mName" maxlength="30" placeholder="למשל: נועה" data-i18n-placeholder="memberNamePlaceholder"></label>
-        <p class="hint"><span data-i18n="memberStep2">2.</span> <a id="mTokenLink" href="https://github.com/settings/personal-access-tokens/new?name=Apartment%20Hunter%20-%20partner&target_name=Omerm14&expires_in=none&contents=write" target="_blank" rel="noopener" data-i18n="memberCreateKey">צור עבורו מפתח GitHub</a> <span data-i18n="memberKeyHow">בחשבון שלך: Only select repositories ← MessiahTLVBOT, ההרשאה Contents כבר מסומנת, Generate token.</span></p>
-        <label class="field"><span data-i18n="memberPaste">3. הדבק את המפתח</span><input id="mToken" type="password" autocomplete="off" dir="ltr" placeholder="github_pat_…"></label>
-        <label class="field"><span data-i18n="memberChat">4. מזהה הצ׳אט שלו בטלגרם (לא חובה: ההתראות שלו יכניסו אותו מחובר)</span><input id="mChat" dir="ltr" inputmode="numeric" placeholder="987654321"></label>
-        <button type="button" id="addMember" class="btn ghost small" data-i18n="memberCreate">צור קישור אישי</button>
+        <div class="row two">
+          <label class="field"><span data-i18n="memberName">שם</span><input id="mName" maxlength="30" placeholder="למשל: נועה" data-i18n-placeholder="memberNamePlaceholder"></label>
+          <label class="field"><span data-i18n="memberEmail">אימייל</span><input id="mEmail" type="email" dir="ltr" autocomplete="off" placeholder="name@gmail.com"></label>
+        </div>
+        <button type="button" id="addMember" class="btn ghost small" data-i18n="memberInvite">הזמן</button>
         <p id="shareStatus" class="status-line" role="status"></p>
       </section>
 
       <section class="group">
-        <h3 data-i18n="phoneTitle">פתיחה בטלפון שלך</h3>
-        <p class="hint" data-i18n-html="phoneLead">סרוק עם מצלמת הטלפון. כשהלוח נפתח: שיתוף ← <b>הוסף למסך הבית</b>. הקישור אישי, אל תשתף אותו.</p>
-        <div id="qr" class="qr"></div>
-        <p class="hint" data-i18n-html="phoneInstall">באייפון: אחרי שהלוח נפתח ב־Safari, הוסף אותו למסך הבית <b>מאותו עמוד</b>. כך האייקון ייפתח תמיד מחובר.</p>
-        <button type="button" id="copyLink" class="btn ghost small" data-i18n="copyLink">העתק קישור אישי</button>
+        <h3 data-i18n="phoneTitle">בטלפון</h3>
+        <p class="hint" data-i18n-html="phoneLead">פתח את הכתובת הזו בטלפון והתחבר עם אותו אימייל. באייפון: שיתוף ← <b>הוסף למסך הבית</b>.</p>
+        <p class="app-url" dir="ltr"><span id="appUrl"></span></p>
+        <button type="button" id="copyLink" class="btn ghost small" data-i18n="copyLink">העתק כתובת</button>
+      </section>
+
+      <section class="group">
+        <h3 data-i18n="extensionTitle">תוסף פייסבוק ל־Chrome</h3>
+        <p class="hint" data-i18n="extensionLead">התוסף קורא את קבוצות הפייסבוק שלך ושולח את הפוסטים לשרת. צור מפתח והדבק אותו בתוסף. יצירת מפתח חדש מבטלת את הקודם.</p>
+        <button type="button" id="extensionKey" class="btn ghost small" data-i18n="extensionKey">צור מפתח לתוסף</button>
+        <p class="app-url" dir="ltr" id="extensionKeyValue" hidden></p>
       </section>
 
       <details class="group diag">
         <summary><span data-i18n="diagnostics">אבחון</span><svg class="ic"><use href="#i-chevron"/></svg></summary>
-        <p class="hint" data-i18n="diagLead">מה הסריקה האחרונה מצאה בכל קבוצה. אם משהו לא עובד, העתק את הדוח ושלח אותו.</p>
+        <p class="hint" data-i18n="diagLead">מה הסריקה האחרונה מצאה בכל מקור. אם משהו לא עובד, העתק את הדוח ושלח אותו.</p>
+        <p id="aiStatus" class="hint"></p>
         <pre id="debugView" class="debug"></pre>
         <button type="button" id="copyDebug" class="btn ghost small" data-i18n="copyDebug">העתק דוח אבחון</button>
       </details>
 
-      <p class="hint fine" data-i18n="privacy">הסריקה רצה בתוסף Chrome במחשב שלך. התוסף רק קורא פוסטים בקבוצות שאתה חבר בהן: לא מגיב, לא מפרסם ולא שולח הודעות. הנתונים נשמרים ב־GitHub מוצפנים, והמפתח קיים רק במכשירים שלך.</p>
-      <button type="button" id="logout" class="link-btn danger" data-i18n="logout">התנתק במכשיר הזה</button>
+      <p class="hint fine" data-i18n="privacy">הנתונים נשמרים בשרת פרטי (Cloudflare) ורק אנשים שהוזמנו יכולים להיכנס. התוסף רק קורא פוסטים בקבוצות שאתה חבר בהן: לא מגיב, לא מפרסם ולא שולח הודעות.</p>
+      <a id="logout" class="link-btn danger" href="/cdn-cgi/access/logout" data-i18n="logout">התנתק</a>
 
-      <div class="drawer-foot">
+      <div class="drawer-foot" data-owner-only>
         <p id="settingsStatus" class="status-line" role="status"></p>
         <button type="submit" class="btn primary" data-i18n="save">שמור</button>
       </div>
     </form>
   </aside>
 
-  <script src="qrcode.js"></script>
   <script src="default-groups.js"></script>
   <script src="parser.js"></script>
-  <script src="sync.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
