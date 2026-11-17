@@ -32,11 +32,22 @@ $("discover").addEventListener("click", async () => {
   $("discover").disabled = true;
   $("status").textContent = "עובר על רשימת הקבוצות שלך. הפעולה עשויה להימשך כחצי דקה…";
   try {
+    const startedAt = Date.now();
     const result = await chrome.runtime.sendMessage({type: "discover-groups"});
-    if (!result?.ok) throw new Error(result?.error || "הסריקה נכשלה");
-    $("groupUrls").value = result.groups.map((group) => group.url).join("\n");
-    if (result.groups.length > 20) $("intervalMinutes").value = 30;
-    $("status").textContent = `נמצאו ${result.groups.length} קבוצות רלוונטיות. בדוק את הרשימה ולחץ שמור.`;
+    if (!result?.ok) throw new Error("הסריקה לא התחילה");
+    let data = null;
+    for (let attempt = 0; attempt < 70; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      data = await chrome.storage.local.get({
+        discoveredGroups: [], discoveryFinishedAt: 0, discoveryError: "",
+      });
+      if (data.discoveryFinishedAt >= startedAt) break;
+    }
+    if (!data || data.discoveryFinishedAt < startedAt) throw new Error("הסריקה לא הסתיימה בזמן");
+    if (data.discoveryError) throw new Error(data.discoveryError);
+    $("groupUrls").value = data.discoveredGroups.map((group) => group.url).join("\n");
+    if (data.discoveredGroups.length > 20) $("intervalMinutes").value = 30;
+    $("status").textContent = `נמצאו ${data.discoveredGroups.length} קבוצות רלוונטיות. בדוק את הרשימה ולחץ שמור.`;
   } catch (error) {
     $("status").textContent = `לא הצלחתי לאסוף את הקבוצות: ${error.message}`;
   } finally {

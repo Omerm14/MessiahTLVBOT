@@ -119,9 +119,17 @@ chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "discover-groups") return false;
   discoverRelevantGroups()
-    .then((groups) => sendResponse({ok: true, groups}))
-    .catch((error) => sendResponse({ok: false, error: String(error)}));
-  return true;
+    .then((groups) => chrome.storage.local.set({
+      discoveredGroups: groups,
+      discoveryFinishedAt: Date.now(),
+      discoveryError: "",
+    }))
+    .catch((error) => chrome.storage.local.set({
+      discoveryFinishedAt: Date.now(),
+      discoveryError: String(error),
+    }));
+  sendResponse({ok: true, started: true});
+  return false;
 });
 
 schedule();
