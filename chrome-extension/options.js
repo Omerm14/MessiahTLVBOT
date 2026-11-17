@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 async function load() {
   const data = await chrome.storage.local.get({
-    groupUrls: [], intervalMinutes: 15, sharedSecret: "", enabled: false,
+    groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 30, sharedSecret: "", enabled: false,
     lastRun: "", lastResult: null,
   });
   $("groupUrls").value = data.groupUrls.join("\n");

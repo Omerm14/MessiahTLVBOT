@@ -1,6 +1,8 @@
+importScripts("default-groups.js");
+
 const DEFAULTS = {
-  groupUrls: [],
-  intervalMinutes: 15,
+  groupUrls: DEFAULT_GROUP_URLS,
+  intervalMinutes: 30,
   collectorUrl: "http://127.0.0.1:8765/ingest",
   sharedSecret: "",
   enabled: false,
