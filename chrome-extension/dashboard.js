@@ -198,7 +198,21 @@ function fillSettings() {
   $("settingsStatus").textContent = "";
 }
 
-function openSettings() {
+async function debugReport() {
+  const {debug = {}, scan = {}} = await chrome.storage.local.get(["debug", "scan"]);
+  const lines = [`version ${chrome.runtime.getManifest().version} · listings ${Object.keys(state.listings).length}`,
+    `scan: ${scan.running ? "running" : "idle"} ${scan.mode || ""} · error: ${scan.lastError || "none"}`];
+  for (const [url, d] of Object.entries(debug)) {
+    lines.push("", `${(d.title || "").slice(0, 40)} ${url.replace("https://www.facebook.com/groups/", "g/")}`);
+    lines.push(`  units ${d.units ?? "?"} · message-nodes ${d.withMessageNode ?? "?"} · links ${d.withPermalink ?? "?"} · posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"}`);
+    (d.samples || []).forEach((sample) => lines.push(`  > ${sample.replace(/\s+/g, " ").slice(0, 120)}`));
+  }
+  if (!Object.keys(debug).length) lines.push("", "עדיין לא רצה סריקה.");
+  return lines.join("\n");
+}
+
+async function openSettings() {
+  $("debugView").textContent = await debugReport();
   fillSettings();
   $("settings").hidden = false;
   $("scrim").hidden = false;
@@ -306,6 +320,12 @@ $("backfill").addEventListener("click", async () => {
     await chrome.runtime.sendMessage({type: "scan", mode: "backfill"});
     setSettingsStatus("סריקת שבועיים התחילה. אפשר לסגור את ההגדרות.");
   }
+});
+$("copyDebug").addEventListener("click", async () => {
+  const text = await debugReport();
+  $("debugView").textContent = text;
+  await navigator.clipboard.writeText(text).catch(() => {});
+  setSettingsStatus("הדוח הועתק — הדבק אותו בצ׳אט.");
 });
 $("testTelegram").addEventListener("click", async () => {
   if (!(await saveSettings())) return;

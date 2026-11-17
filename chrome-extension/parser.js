@@ -32,10 +32,10 @@
     new RegExp(`${NUM}\\s*(?:₪|ש["״']?ח|nis|ils|שקל)`, "i"),
   ];
   const PRICE_THOUSANDS = /(\d{1,2}(?:[.,]\d)?)\s*(?:אלף|k\b)/i;
-  const ROOMS_RE = /(\d+(?:[.,]5)?)\s*(?:חדרים?|חד[׳']|ח[׳']|rooms?|br\b|bedrooms?)/i;
+  const ROOMS_RE = /(\d+(?:[.,]5)?)\s*(?:חדרים?|חד[׳'](?!\s*שינה)|ח[׳']|rooms?)(?!\s*שינה)/i;
   const ROOMS_PREFIX_RE = /(?:דירת|דירה של)\s*(\d+(?:[.,]5)?)\s*(?:חד|ח[׳'])?/i;
   const BATH_PATTERNS = [
-    /(\d+)\s*(?:חדרי?\s*)?(?:שירותים|שרותים|אסלות|חדרי?\s*רחצה|מקלחות|bathrooms?|toilets?|wc)/i,
+    /(\d+)\s*(?:חדרי?\s*)?(?:שירותים|שרותים|אסלות|חדרי?\s*רחצה|מקלחות|bathrooms?|baths?|toilets?|wc)/i,
     /(?:שירותים|שרותים|bathrooms?|toilets?|wc)\s*[:\-]?\s*(\d+)/i,
   ];
   const GUEST_TOILET = /(שירותי|שרותי)\s*אורחים|guest\s*(toilet|bathroom|wc)|שירותים\s*נוספים/i;
@@ -63,9 +63,15 @@
     return null;
   }
 
+  // Facebook rental listings say "3 beds · 2 baths"; Israeli room count = bedrooms + living room.
+  const BEDS_RE = /(\d)\s*(?:beds?|bedrooms?|חדרי שינה|חד[׳']?\s*שינה)/i;
+
   function findRooms(text) {
     const match = text.match(ROOMS_RE) || text.match(ROOMS_PREFIX_RE);
-    if (!match) return null;
+    if (!match) {
+      const beds = text.match(BEDS_RE);
+      return beds ? Number(beds[1]) + 1 : null;
+    }
     const value = Number(match[1].replace(",", "."));
     return value >= 1 && value <= 10 ? value : null;
   }

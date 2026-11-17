@@ -69,35 +69,106 @@ function formatAlert(listing, title) {
 
 // ---------- Facebook page script (runs inside the group tab) ----------
 
-function collectFromPage() {
-  if (document.querySelector('input[name="email"], form[action*="login"]')) return {loggedOut: true, posts: []};
+// Facebook's markup changes often, so this tries several layouts:
+// - group feed units: children of [role="feed"] or elements with aria-posinset
+//   (top-level posts usually have NO role="article"; comments do)
+// - post body: data-ad-rendering-role="story_message" / data-ad-preview="message",
+//   else the unit's text with comments and toolbar lines removed
+// - permalinks are hidden behind "#" until hovered, so we hover the header links.
+async function collectFromPage() {
+  if (document.querySelector('input[name="email"], form[action*="login"]') && !document.querySelector('[role="feed"]')) {
+    return {loggedOut: true, posts: []};
+  }
+  const COMMENT_LABEL = /^(comment|reply|תגובה|תשובה|השב)/i;
+  const isComment = (el) => {
+    const art = el.closest('[role="article"]');
+    return !!art && COMMENT_LABEL.test(art.getAttribute("aria-label") || "");
+  };
+  const UI_LINE = /^(like|comment|share|send|reply|follow|join|see more|see less|see translation|all reactions:?|most relevant|write a (comment|public comment)…?|לייק|אהבתי|תגובה|תגובות|שיתוף|שתף|שליחה|השב|הצטרפות|ראה עוד|הצג עוד|הצג פחות|ראה תרגום|עוד|כל התגובות|כתיבת תגובה.*|כתוב תגובה.*|הכי רלוונטי|\d+\s*(comments?|shares?|תגובות|שיתופים)|·|\d+[smhdwy]|\d+\s*(ש׳|ד׳|י׳|דק׳))$/i;
+
+  // Expand truncated posts.
   const seeMore = /^(see more|ראה עוד|הצג עוד|עוד)$/i;
-  document.querySelectorAll('[role="article"] [role="button"]').forEach((button) => {
-    if (seeMore.test((button.innerText || "").trim())) button.click();
+  document.querySelectorAll('[role="button"]').forEach((button) => {
+    if (seeMore.test((button.innerText || "").trim()) && !isComment(button)) button.click();
   });
+
+  // Find post units.
+  const units = new Set();
+  document.querySelectorAll('[role="feed"] > div, [aria-posinset]').forEach((el) => units.add(el));
+  document.querySelectorAll('[role="article"]').forEach((el) => {
+    if (!COMMENT_LABEL.test(el.getAttribute("aria-label") || "") && !el.parentElement?.closest('[role="article"]')) units.add(el);
+  });
+  // Drop units nested inside other units.
+  const list = [...units].filter((el) => ![...units].some((other) => other !== el && other.contains(el)));
+
+  // Reveal real permalinks (Facebook fills the href on hover/focus).
+  for (const unit of list) {
+    unit.querySelectorAll('a[href="#"], a[href*="__cft__"], a[role="link"]:not([href*="/user/"])').forEach((a, i) => {
+      if (i > 12 || isComment(a)) return;
+      for (const type of ["mouseover", "mouseenter", "focus", "focusin"]) a.dispatchEvent(new Event(type, {bubbles: true}));
+    });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  const PERMALINK = /facebook\.com\/(?:groups\/[^/]+\/(?:posts|permalink)\/\d+|permalink\.php|story\.php|\d+\/posts\/|.*[?&](?:story_fbid|multi_permalinks)=)/i;
   const posts = [];
-  for (const article of document.querySelectorAll('[role="article"]')) {
-    if (article.parentElement?.closest('[role="article"]')) continue; // skip comments
-    const message = article.querySelector('[data-ad-preview="message"], [data-ad-comet-preview="message"]');
-    const text = (message?.innerText || article.innerText || "").trim();
-    if (text.length < 30) continue;
-    const links = [...article.querySelectorAll("a[href]")];
-    const permalink = links.find((a) =>
-      /facebook\.com\/(?:groups\/[^/]+\/(?:posts|permalink)\/|permalink\.php|story\.php)/i.test(a.href));
-    const author = article.querySelector("h2 a, h3 a, strong a, h2, h3")?.innerText?.trim() || "";
-    const image = [...article.querySelectorAll("img")].find((img) =>
-      /scontent|fbcdn/.test(img.src) && (img.naturalWidth || img.width) >= 160);
+  const stats = {units: list.length, withMessageNode: 0, withPermalink: 0};
+  for (const unit of list) {
+    const messageNodes = [...unit.querySelectorAll(
+      '[data-ad-rendering-role="story_message"], [data-ad-comet-preview="message"], [data-ad-preview="message"]'
+    )].filter((el) => !isComment(el));
+    let text = "";
+    if (messageNodes.length) {
+      stats.withMessageNode++;
+      text = messageNodes.map((el) => el.innerText.trim()).filter(Boolean).join("\n");
+    }
+    // Attachments (e.g. "for rent" listings) keep price/rooms outside the message.
+    const clone = unit.cloneNode(true);
+    clone.querySelectorAll('[role="article"], ul, form, [role="textbox"], [role="toolbar"], h2, h3, h4, svg').forEach((el) => {
+      if (el.matches('[role="article"]') && !COMMENT_LABEL.test(el.getAttribute("aria-label") || "")) return;
+      el.remove();
+    });
+    // innerText needs layout to keep line breaks, so render the copy off-screen briefly.
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-20000px;top:0;width:800px;pointer-events:none";
+    holder.append(clone);
+    document.body.append(holder);
+    const rendered = clone.innerText || clone.textContent || "";
+    holder.remove();
+    const fullText = rendered
+      .split("\n").map((line) => line.trim())
+      .filter((line) => line.length > 1 && !UI_LINE.test(line))
+      .filter((line, i, arr) => arr.indexOf(line) === i)
+      .join("\n");
+    if (!text) text = fullText;
+    else if (fullText.length > text.length) {
+      const extra = fullText.split("\n").filter((line) => !text.includes(line) && /\d|₪|חדר|bed|bath|שירות/i.test(line));
+      if (extra.length) text += "\n" + extra.join("\n");
+    }
+    text = text.trim();
+    if (text.length < 25) continue;
+
+    const anchors = [...unit.querySelectorAll("a[href]")].filter((a) => !isComment(a));
+    const permalink = anchors.find((a) => PERMALINK.test(a.href));
+    if (permalink) stats.withPermalink++;
+    const author = (unit.querySelector('[data-ad-rendering-role="profile_name"], h2, h3, h4, strong')?.innerText || "").split("\n")[0].trim();
+    const image = [...unit.querySelectorAll("img")].find((img) =>
+      !isComment(img) && /scontent|fbcdn/.test(img.src) && (img.naturalWidth || img.width) >= 160);
+    const timeLabel = permalink
+      ? (permalink.innerText || permalink.getAttribute("aria-label") || "").trim()
+      : "";
     posts.push({
       text: text.slice(0, 6000),
       url: permalink ? permalink.href : "",
-      postedLabel: permalink ? (permalink.innerText || permalink.getAttribute("aria-label") || "").trim().slice(0, 40) : "",
+      postedLabel: timeLabel.length <= 40 ? timeLabel : "",
       author: author.slice(0, 80),
       image: image ? image.src : "",
     });
   }
   window.scrollBy(0, Math.max(900, window.innerHeight * 0.9));
   const groupName = (document.querySelector("h1")?.innerText || document.title || "").trim().slice(0, 100);
-  return {loggedOut: false, posts, groupName};
+  const samples = posts.slice(0, 3).map((p) => p.text.slice(0, 160));
+  return {loggedOut: false, posts, groupName, stats, samples};
 }
 
 // ---------- Scanning ----------
@@ -151,6 +222,7 @@ async function scanGroup(groupUrl, mode) {
 
   const found = new Map();
   let groupName = "";
+  let lastDebug = null;
   let idleRounds = 0;
   for (let round = 0; round < ROUNDS[mode]; round++) {
     if (!(await getScan()).running) throw new Error("STOPPED");
@@ -158,6 +230,9 @@ async function scanGroup(groupUrl, mode) {
     const data = result?.result || {posts: []};
     if (data.loggedOut) throw new Error("NOT_LOGGED_IN");
     groupName = data.groupName || groupName;
+    if (round === 0 || data.posts.length) {
+      lastDebug = {group: groupUrl, title: groupName, round, ...(data.stats || {}), posts: data.posts.length, samples: data.samples || []};
+    }
     const before = found.size;
     for (const post of data.posts) {
       const key = post.text.slice(0, 200);
@@ -168,6 +243,9 @@ async function scanGroup(groupUrl, mode) {
     await setScan({heartbeat: Date.now(), round: round + 1});
     await sleep(1800 + Math.random() * 1200);
   }
+  const {debug = {}} = await chrome.storage.local.get("debug");
+  debug[groupUrl] = {...lastDebug, unique: found.size, at: Date.now()};
+  await chrome.storage.local.set({debug});
   return {posts: [...found.values()], groupName};
 }
 
@@ -275,7 +353,14 @@ async function startScan(requested) {
 
 // ---------- Events ----------
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
+  // Versions before 0.4 mostly saved comments instead of posts: start clean
+  // and redo the two-week scan.
+  if (details.reason === "update" && /^0\.[0-3]\./.test(details.previousVersion || "")) {
+    const config = await getConfig();
+    await chrome.storage.local.set({listings: {}, debug: {}, scan: {running: false}, config: {...config, backfillDone: false}});
+    if (config.enabled) startScan("backfill");
+  }
   await schedule();
   chrome.tabs.create({url: chrome.runtime.getURL("dashboard.html")});
 });
