@@ -1,0 +1,44 @@
+name: Apartment Hunter Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apartment-hunter-state
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_BOT_USERNAME: ${{ secrets.TELEGRAM_BOT_USERNAME }}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.TELEGRAM_ALLOWED_CHAT_IDS }}
+      APARTMENT_DB_PATH: data/apartments.db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate configuration
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN" || (echo "Missing TELEGRAM_BOT_TOKEN secret" && exit 1)
+          test -n "$TELEGRAM_BOT_USERNAME" || (echo "Missing TELEGRAM_BOT_USERNAME secret" && exit 1)
+      - name: Check Telegram once
+        run: PYTHONPATH=src python -m apartment_hunter.bot --once
+      - name: Persist bot state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/apartments.db
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: persist apartment bot state [skip ci]"
+          git push
+
