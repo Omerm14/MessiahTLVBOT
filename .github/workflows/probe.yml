@@ -2,9 +2,15 @@ name: Probe sources
 
 # Phase 0 of the restructure: checks what each apartment source returns to a
 # GitHub server (plain fetch and a headless browser). Read-only; uploads a report.
-# Run it by hand: Actions → Probe sources → Run workflow.
+# Runs by hand (Actions → Probe sources → Run workflow, once it is on main) and when
+# the probe changes on the restructure branch.
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/sleepy-dijkstra-umgsu3]
+    paths:
+      - collector/probe.mjs
+      - .github/workflows/probe.yml
 
 permissions:
   contents: read
