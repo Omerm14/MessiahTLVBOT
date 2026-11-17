@@ -7,12 +7,14 @@ import json
 import logging
 import os
 from pathlib import Path
+import threading
 from typing import Any
 
-from .bot import format_listing
+from .bot import format_listing, run as run_telegram_bot
+from .config import Settings
 from .parser import parse_listing
 from .storage import Storage
-from .telegram import TelegramClient
+from .telegram import TelegramClient, TelegramError
 
 
 LOGGER = logging.getLogger("apartment_hunter.collector")
@@ -170,9 +172,45 @@ def make_handler(settings: CollectorSettings):
     return CollectorHandler
 
 
+def start_telegram_listener(settings: CollectorSettings) -> threading.Thread:
+    """Answer Telegram messages and commands while the local collector runs."""
+    bot_settings = Settings(
+        token=settings.token,
+        db_path=settings.db_path,
+        allowed_chat_ids=frozenset({settings.alert_chat_id}),
+    )
+    thread = threading.Thread(
+        target=run_telegram_bot,
+        args=(bot_settings,),
+        name="telegram-listener",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def check_telegram(settings: CollectorSettings) -> None:
+    telegram = TelegramClient(settings.token)
+    try:
+        bot = telegram.call("getMe")
+        telegram.call("deleteWebhook")
+        telegram.send_message(
+            settings.alert_chat_id,
+            "✅ Apartment Hunter פעיל על המחשב שלך. שלחו /help לרשימת הפקודות.",
+        )
+    except TelegramError as exc:
+        raise SystemExit(
+            "Telegram rejected the bot token or chat ID "
+            f"({exc}). Run ./scripts/setup_local.sh again with the newest token from BotFather."
+        ) from exc
+    LOGGER.info("Connected to Telegram as @%s", bot.get("username", "?"))
+
+
 def main() -> None:
     settings = CollectorSettings.from_env()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    check_telegram(settings)
+    start_telegram_listener(settings)
     server = ThreadingHTTPServer(
         (settings.bind_host, settings.bind_port),
         make_handler(settings),

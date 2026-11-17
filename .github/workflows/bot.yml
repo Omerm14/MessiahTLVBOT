@@ -1,9 +1,10 @@
 name: Apartment Hunter Bot
 
+# Manual only. The bot now answers Telegram from the Mac (scripts/run_local_collector.sh).
+# A schedule here would fight the Mac over Telegram updates and use up the
+# private-repo Actions minutes within about a week.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
 
 permissions:
   contents: write
