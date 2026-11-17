@@ -28,26 +28,16 @@ MVP חינמי שמנטר מהמחשב האישי קבוצות Facebook שנבח
 ### הכנה חד־פעמית
 
 1. בטלו את טוקן Telegram שנחשף בעבר והפיקו טוקן חדש ב־BotFather.
-2. שמרו את הטוקן ב־Keychain של macOS:
+2. הפעילו את אשף ההגדרה המקומי:
 
    ```bash
-   security add-generic-password -a "$USER" -s apartment-hunter-token -w
+   ./scripts/setup_local.sh
    ```
 
-3. צרו סוד מקומי ארוך ושמרו גם אותו ב־Keychain. העתיקו אותו זמנית כדי להזין אותו גם במסך ההגדרות של התוסף:
+   האשף יבקש את הטוקן החדש ואת מזהה הצ׳אט בלי לכתוב אותם לקבצים. הוא ייצור סוד מקומי, ישמור הכול ב־Keychain ויעתיק את הסוד ללוח לצורך השדה בתוסף.
 
-   ```bash
-   security add-generic-password -a "$USER" -s apartment-hunter-collector-secret -w
-   ```
-
-4. שמרו את מזהה הצ׳אט שלכם ב־Keychain:
-
-   ```bash
-   security add-generic-password -a "$USER" -s apartment-hunter-chat-id -w
-   ```
-
-5. ב־Chrome פתחו `chrome://extensions`, הפעילו **Developer mode**, לחצו **Load unpacked** ובחרו את התיקייה `chrome-extension` בפרויקט.
-6. במסך התוסף הדביקו קישור אחד לכל קבוצת Facebook, הדביקו את הסוד המקומי, סמנו **הפעל ניטור** ושמרו.
+3. ב־Chrome פתחו `chrome://extensions`, הפעילו **Developer mode**, לחצו **Load unpacked** ובחרו את התיקייה `chrome-extension` בפרויקט.
+4. במסך התוסף הדביקו קישור אחד לכל קבוצת Facebook, הדביקו את הסוד המקומי, סמנו **הפעל ניטור** ושמרו.
 
 ### הפעלה
 
