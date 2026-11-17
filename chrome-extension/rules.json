@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "rounds": {
+    "quick": 5,
+    "backfill": 45
+  },
+  "chronologicalParam": [
+    "sorting_setting",
+    "CHRONOLOGICAL"
+  ],
+  "loginSelector": "input[name=\"email\"], form[action*=\"login\"]",
+  "feedSelector": "[role=\"feed\"]",
+  "unitSelector": "[role=\"feed\"] > div, [aria-posinset]",
+  "articleSelector": "[role=\"article\"]",
+  "commentLabel": "^(comment|reply|תגובה|תשובה|השב)",
+  "seeMore": "^(see more|ראה עוד|הצג עוד|עוד)$",
+  "messageSelector": "[data-ad-rendering-role=\"story_message\"], [data-ad-comet-preview=\"message\"], [data-ad-preview=\"message\"]",
+  "removeInCopy": "[role=\"article\"], ul, form, [role=\"textbox\"], [role=\"toolbar\"], h2, h3, h4, svg",
+  "uiLine": "^(like|comment|share|send|reply|follow|join|see more|see less|see translation|all reactions:?|most relevant|write a (comment|public comment)…?|לייק|אהבתי|תגובה|תגובות|שיתוף|שתף|שליחה|השב|הצטרפות|ראה עוד|הצג עוד|הצג פחות|ראה תרגום|עוד|כל התגובות|כתיבת תגובה.*|כתוב תגובה.*|הכי רלוונטי|\\d+\\s*(comments?|shares?|תגובות|שיתופים)|·|\\d+[smhdwy]|\\d+\\s*(ש׳|ד׳|י׳|דק׳))$",
+  "hoverLinks": "a[href=\"#\"], a[href*=\"__cft__\"], a[role=\"link\"]:not([href*=\"/user/\"])",
+  "permalink": "facebook\\.com\\/(?:groups\\/[^/]+\\/(?:posts|permalink)\\/\\d+|permalink\\.php|story\\.php|\\d+\\/posts\\/|.*[?&](?:story_fbid|multi_permalinks)=)",
+  "detailLine": "\\d|₪|חדר|bed|bath|שירות",
+  "authorSelector": "[data-ad-rendering-role=\"profile_name\"], h2, h3, h4, strong",
+  "imageSrc": "scontent|fbcdn",
+  "minImageWidth": 160,
+  "minTextLength": 25
+}

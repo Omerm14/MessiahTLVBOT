@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Apartment Hunter TLV - Local Facebook Monitor",
-  "version": "0.2.1",
-  "description": "Read-only monitoring of selected Facebook groups for apartment posts.",
-  "permissions": ["alarms", "storage", "tabs", "scripting"],
+  "name": "צייד הדירות TLV",
+  "version": "0.6.0",
+  "description": "סורק קבוצות דירות בפייסבוק, שולח התראות לטלגרם ומסנכרן לאפליקציית הדירות. קריאה בלבד.",
+  "permissions": ["alarms", "storage", "unlimitedStorage", "tabs", "scripting"],
   "host_permissions": [
     "https://www.facebook.com/*",
     "https://facebook.com/*",
-    "http://127.0.0.1:8765/*"
+    "https://api.telegram.org/*",
+    "https://api.github.com/*",
+    "https://omerm14.github.io/*"
   ],
   "background": {"service_worker": "background.js"},
-  "options_page": "options.html",
-  "action": {"default_title": "Apartment Hunter TLV"}
+  "options_page": "pair.html",
+  "action": {"default_title": "פתח את אפליקציית הדירות"}
 }

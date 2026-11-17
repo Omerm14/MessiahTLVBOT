@@ -1,12 +1,17 @@
 name: Apartment Hunter Bot
 
+# Runs the Telegram bot non-stop. Each run listens for about 5.5 hours, saving
+# its state every 30 minutes, then starts the next run itself. The hourly
+# schedule (default branch only) restarts the chain if it ever breaks.
+# Needs a public repository: private repos get only 2,000 free minutes a month.
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "17 * * * *"
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: apartment-hunter-state
@@ -15,28 +20,61 @@ concurrency:
 jobs:
   poll:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.TELEGRAM_ALLOWED_CHAT_IDS }}
       APARTMENT_DB_PATH: data/apartments.db
+      ENCRYPTED_DB: data/apartments.db.enc
+      CHUNKS: "11"
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Validate configuration
         run: |
           test -n "$TELEGRAM_BOT_TOKEN" || (echo "Missing TELEGRAM_BOT_TOKEN secret" && exit 1)
-      - name: Check Telegram once
-        run: PYTHONPATH=src python -m apartment_hunter.bot --once
-      - name: Persist bot state
+          test -n "$TELEGRAM_ALLOWED_CHAT_IDS" || (echo "Missing TELEGRAM_ALLOWED_CHAT_IDS secret: the bot would answer anyone" && exit 1)
+      - name: Restore encrypted state
+        run: |
+          if [ -f "$ENCRYPTED_DB" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:TELEGRAM_BOT_TOKEN \
+              -in "$ENCRYPTED_DB" -out "$APARTMENT_DB_PATH" \
+              || { echo "Could not decrypt state (token changed?). Starting fresh."; rm -f "$APARTMENT_DB_PATH"; }
+          fi
+      - name: Run bot
+        id: bot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/apartments.db
-          git diff --cached --quiet && exit 0
-          git commit -m "chore: persist apartment bot state [skip ci]"
-          git push
-
+          save_state() {
+            [ -f "$APARTMENT_DB_PATH" ] || return 0
+            python - <<'PY'
+          import os, sqlite3
+          sqlite3.connect(os.environ["APARTMENT_DB_PATH"]).execute("PRAGMA wal_checkpoint(TRUNCATE)")
+          PY
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:TELEGRAM_BOT_TOKEN \
+              -in "$APARTMENT_DB_PATH" -out "$ENCRYPTED_DB"
+            git add "$ENCRYPTED_DB"
+            git rm --cached --quiet --ignore-unmatch "$APARTMENT_DB_PATH"
+            git diff --cached --quiet && return 0
+            git commit -qm "chore: persist encrypted bot state [skip ci]"
+            for attempt in 1 2 3; do
+              git push && return 0
+              git pull --rebase -X theirs && continue
+              sleep 5
+            done
+            echo "::warning::Could not push bot state"
+          }
+          for chunk in $(seq 1 "$CHUNKS"); do
+            echo "Listening chunk $chunk of $CHUNKS"
+            PYTHONPATH=src timeout -k 60 30m python -m apartment_hunter.bot || true
+            save_state
+          done
+      - name: Start next run
+        # Not on manual cancel (that is how you stop the bot), not if setup failed.
+        if: (success() || failure()) && steps.bot.outcome != 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run bot.yml --ref "${{ github.ref_name }}" --repo "${{ github.repository }}"

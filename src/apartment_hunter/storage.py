@@ -42,7 +42,7 @@ class SaveResult:
 class Storage:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(path)
+        self.connection = sqlite3.connect(path, timeout=30)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.executescript(SCHEMA)
