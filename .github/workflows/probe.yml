@@ -1,0 +1,32 @@
+name: Probe sources
+
+# Phase 0 of the restructure: checks what each apartment source returns to a
+# GitHub server (plain fetch and a headless browser). Read-only; uploads a report.
+# Run it by hand: Actions → Probe sources → Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install a headless browser
+        run: |
+          npm install --no-save --no-package-lock playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: Probe
+        run: node collector/probe.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-report
+          path: probe-out/
+          retention-days: 7
