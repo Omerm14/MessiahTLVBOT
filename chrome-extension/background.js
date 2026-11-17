@@ -141,7 +141,7 @@ async function schedule() {
 
 // ---------- Telegram ----------
 
-async function telegram(config, text) {
+async function telegram(config, text, buttons = null) {
   const {secrets} = await local("secrets");
   const chats = String(config.telegramChatId || "").split(/[,\s]+/).filter((id) => /^-?\d+$/.test(id));
   if (!secrets?.telegramToken || !chats.length) return false;
@@ -150,7 +150,10 @@ async function telegram(config, text) {
     const response = await fetch(`https://api.telegram.org/bot${secrets.telegramToken}/sendMessage`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({chat_id: chat, text, disable_web_page_preview: true}),
+      body: JSON.stringify({
+        chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true,
+        ...(buttons ? {reply_markup: {inline_keyboard: [buttons]}} : {}),
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!result.ok) lastError = new Error(result.description || `Telegram error ${response.status}`);
@@ -159,16 +162,32 @@ async function telegram(config, text) {
   return true;
 }
 
+const escHtml = (value) => String(value ?? "").replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+
+// Price first, then rooms and area: the same order as the cards in the web app.
+// Unknown fields say so instead of disappearing.
 function formatAlert(listing, title) {
-  const lines = [title, ""];
-  lines.push(listing.price ? `💰 ${listing.price.toLocaleString("he-IL")} ₪` : "💰 מחיר לא צוין");
-  lines.push(`🛏 ${listing.rooms ?? "?"} חדרים · 🚿 ${listing.bathrooms ?? "?"} שירותים`);
-  lines.push(`📍 ${listing.neighborhoods.join(", ") || "אזור לא זוהה"}`);
-  if (listing.bonuses.length) lines.push(`✨ ${listing.bonuses.join(", ")}`);
-  lines.push("", listing.text.slice(0, 350) + (listing.text.length > 350 ? "…" : ""));
-  lines.push("", `🔗 ${listing.url || listing.source}`);
-  lines.push(`📋 כל הדירות: ${Sync.APP_URL}`);
+  const price = listing.price != null ? `${listing.price.toLocaleString("he-IL")} ₪ לחודש` : "מחיר לא צוין";
+  const rooms = listing.rooms != null ? `${listing.rooms} חדרים` : "? חדרים";
+  const baths = listing.bathrooms != null ? `${listing.bathrooms} שירותים` : "? שירותים";
+  const lines = [
+    `<b>${escHtml(title)}</b>`,
+    "",
+    `<b>${escHtml(price)}</b>`,
+    `${escHtml(rooms)} · ${escHtml(baths)}`,
+    `${escHtml(listing.neighborhoods.join(" · ") || "אזור לא זוהה")}`,
+  ];
+  if (listing.bonuses.length) lines.push(escHtml(listing.bonuses.join(" · ")));
+  if (listing.status === "review" && listing.reasons?.length) lines.push(`<i>${escHtml(listing.reasons.join(" · "))}</i>`);
+  const excerpt = listing.text.replace(/\s+/g, " ").trim();
+  lines.push("", `<blockquote>${escHtml(excerpt.slice(0, 280))}${excerpt.length > 280 ? "…" : ""}</blockquote>`);
+  if (listing.sourceName) lines.push(`<i>${escHtml(listing.sourceName)}</i>`);
   return lines.join("\n");
+}
+
+function alertButtons(listing) {
+  const post = /^https:\/\//.test(listing.url || "") ? listing.url : listing.source;
+  return [{text: "פתח את הפוסט", url: post}, {text: "כל הדירות", url: Sync.APP_URL}];
 }
 
 // ---------- Facebook page script (runs inside the group tab) ----------
@@ -401,7 +420,7 @@ async function runScan(mode, resume = false) {
         await setScan({pendingAlerts: [...(state.pendingAlerts || []), ...alertable.map((l) => l.id)]});
       } else {
         for (const listing of alertable) {
-          await telegram(config, formatAlert(listing, listing.status === "match" ? "🚨 דירה חדשה שמתאימה לך!" : "🟡 דירה חדשה לבדיקה"))
+          await telegram(config, formatAlert(listing, listing.status === "match" ? "🏠 דירה חדשה שמתאימה לך" : "🔎 דירה חדשה לבדיקה"), alertButtons(listing))
             .catch((error) => setScan({lastError: `Telegram: ${error.message}`}));
         }
       }
@@ -431,10 +450,10 @@ async function finishBackfill(config, state) {
   const matches = (state.pendingAlerts || []).map((id) => listings[id]).filter(Boolean)
     .map((l) => ({...l, ...parseListing(l.text, l.url)}));
   await telegram(config,
-    `✅ הסריקה הראשונה הסתיימה\nנבדקו ${state.counts.posts} פוסטים מ־${state.total} קבוצות.\n` +
-    `נמצאו ${matches.length} דירות מתאימות.\n📋 כל הדירות: ${Sync.APP_URL}`).catch(() => {});
+    `<b>✅ הסריקה הראשונה הסתיימה</b>\nנבדקו ${state.counts.posts} פוסטים מ־${state.total} קבוצות.\n` +
+    `נמצאו ${matches.length} דירות מתאימות.`, [{text: "פתח את הלוח", url: Sync.APP_URL}]).catch(() => {});
   for (const listing of matches.slice(0, MAX_ALERTS_FROM_BACKFILL)) {
-    await telegram(config, formatAlert(listing, "🏠 נמצאה בסריקת השבועיים האחרונים")).catch(() => {});
+    await telegram(config, formatAlert(listing, "🏠 מהשבועיים האחרונים"), alertButtons(listing)).catch(() => {});
     await sleep(400);
   }
 }
@@ -521,6 +540,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       await pullConfig();
       await pushListings();
       return {ok: true, link: ownerLink(pairing), pages};
+    }
+    if (message?.type === "open-app") {
+      await openApp();
+      return {ok: true};
+    }
+    if (message?.type === "scan-now") {
+      const scan = await getScan();
+      if (!scan.running) await startScan("quick");
+      return {ok: true};
+    }
+    if (message?.type === "stop-scan") {
+      await setScan({running: false});
+      return {ok: true};
     }
     if (message?.type === "status") {
       const {pairing, scan, syncError} = await local(["pairing", "scan", "syncError"]);

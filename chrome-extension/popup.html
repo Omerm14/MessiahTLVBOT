@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>Messiah TLV APT Hunter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <img src="icons/icon-32.png" width="28" height="28" alt="">
+    <div class="head-text">
+      <h1 data-t="appName">Messiah TLV APT Hunter</h1>
+      <p id="status" class="status" role="status"><span class="dot"></span><span></span></p>
+    </div>
+    <button type="button" id="lang" class="lang">EN</button>
+  </header>
+  <div id="progress" class="progress" hidden><div id="bar"></div></div>
+
+  <section id="paired" hidden>
+    <dl class="stats">
+      <div><dt data-t="newMatches">התאמות חדשות</dt><dd id="sMatches">0</dd></div>
+      <div><dt data-t="today">פוסטים היום</dt><dd id="sToday">0</dd></div>
+      <div><dt data-t="groups">קבוצות</dt><dd id="sGroups">0</dd></div>
+    </dl>
+    <a id="latest" class="latest" hidden target="_blank" rel="noopener noreferrer">
+      <span class="latest-label" data-t="latestMatch">ההתאמה האחרונה</span>
+      <span id="latestPrice" class="latest-price"></span>
+      <span id="latestMeta" class="latest-meta"></span>
+    </a>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" id="open" class="btn primary" data-t="openBoard">פתח את הלוח</button>
+      <button type="button" id="scan" class="btn ghost" data-t="scanNow">סרוק עכשיו</button>
+      <button type="button" id="stop" class="btn ghost" data-t="stop" hidden>עצור</button>
+    </div>
+  </section>
+
+  <section id="unpaired" class="unpaired" hidden>
+    <p data-t="notPaired">התוסף עוד לא מחובר. חיבור חד־פעמי לוקח דקה.</p>
+    <button type="button" id="pair" class="btn primary" data-t="connect">חבר את התוסף</button>
+  </section>
+
+  <script src="parser.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

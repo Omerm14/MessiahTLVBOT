@@ -22,7 +22,7 @@ Chrome on a Mac kept open; a small Chrome window opens during scans. Surfaces: d
 Plain HTML/CSS/JS Chrome MV3 extension, no build step, no external network beyond Facebook and Telegram (fonts must be bundled locally). Read-only on Facebook. Parsing is heuristic: any field can be missing and must render as unknown, not zero. Requested scope: listings with full info, settings, live status, toolbar popup, Telegram alerts.
 
 ## Brand Commitments
-Name: צייד הדירות TLV (Apartment Hunter TLV). Language: Hebrew RTL by default with an English toggle.
+Name: Messiah TLV APT Hunter (same name in Hebrew and English). Language: Hebrew RTL by default with an English toggle.
 
 ## Evidence on Hand
 Real listings come from the user's Facebook groups at runtime; none are committed. Mockups must label demo listings as demo.

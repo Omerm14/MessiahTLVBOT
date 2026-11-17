@@ -1,5 +1,7 @@
 const {parseListing, evaluate, DEFAULT_CRITERIA, NEIGHBORHOOD_NAMES} = window.ApartmentParser;
 const Sync = window.HunterSync;
+const {t} = window.I18n;
+const L = window.I18n;
 const $ = (id) => document.getElementById(id);
 const BONUS_NAMES = ["חניה", "מרפסת", "ממ״ד", "מעלית", "משופצת", "מרוהטת", "חיות"];
 const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -12,6 +14,7 @@ const DEFAULT_CONFIG = {
 
 const state = {
   secrets: null,
+  loaded: false,
   tab: "match",
   raw: [],            // listings as uploaded by the extension
   listings: {},       // id -> parsed listing
@@ -25,6 +28,7 @@ const state = {
   secretsSha: "",
   filters: {text: "", price: "", rooms: "", sort: "new", areas: new Set(), bonuses: new Set()},
   openTexts: new Set(),
+  bannerKey: null,
 };
 
 // ---------- helpers ----------
@@ -33,26 +37,26 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
 const safeUrl = (url) => (/^https:\/\//i.test(url || "") ? url : "");
-
-function timeAgo(ms) {
-  if (!ms) return "";
-  const minutes = Math.round((Date.now() - ms) / 60000);
-  if (minutes < 1) return "עכשיו";
-  if (minutes < 60) return `לפני ${minutes} דק׳`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `לפני ${hours} שע׳`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "אתמול" : `לפני ${days} ימים`;
-}
+const icon = (name) => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const num = (value) => Number(value).toLocaleString(L.locale());
 
 function withDefaults(config) {
   return {...DEFAULT_CONFIG, ...(config || {}), criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})}};
 }
 
-function showBanner(text, isError = true) {
-  $("banner").textContent = text;
-  $("banner").classList.toggle("ok", !isError);
-  $("banner").hidden = !text;
+// Banners are stored as a key + argument so they re-translate when the language changes.
+function showBanner(key, arg) {
+  state.bannerKey = key ? [key, arg] : null;
+  renderBanner();
+}
+function renderBanner() {
+  const banner = $("banner");
+  banner.hidden = !state.bannerKey;
+  banner.textContent = state.bannerKey ? t(...state.bannerKey) : "";
+}
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 
 // ---------- secrets ----------
@@ -114,12 +118,13 @@ async function refresh() {
       state.secretsFile = {telegramToken: "", members: [], ...(await Sync.decryptJson(state.secrets.ownerKey, secretsFile.text))};
       state.secretsSha = secretsFile.sha;
     }
-    showBanner("");
+    showBanner(null);
   } catch (error) {
-    if (error.status === 401) showBanner("המפתח של GitHub לא תקף יותר. צור מפתח חדש ולחץ על אייקון התוסף במחשב.");
-    else if (error.name === "OperationError") showBanner("הקישור הזה שייך להתקנה ישנה. פתח את האפליקציה מאייקון התוסף במחשב.");
-    else showBanner(`לא הצלחתי לטעון נתונים: ${error.message}`);
+    if (error.status === 401) showBanner("errKey");
+    else if (error.name === "OperationError") showBanner("errOldLink");
+    else showBanner("errLoad", error.message);
   }
+  state.loaded = true;
   reparse();
   render();
 }
@@ -140,7 +145,7 @@ function saveMarksSoon() {
           "update saved/hidden [skip ci]", latest?.sha);
         break;
       } catch (error) {
-        if (attempt === 3) showBanner(`השמירה נכשלה: ${error.message}`);
+        if (attempt === 3) showBanner("errSave", error.message);
       }
     }
     reparse();
@@ -170,14 +175,14 @@ async function requestScan(mode) {
 // ---------- rendering ----------
 
 function chip(label, pressed, attrs = "") {
-  return `<button type="button" class="chip" aria-pressed="${pressed}" ${attrs}>${esc(label)}</button>`;
+  return `<button type="button" class="chip" aria-pressed="${pressed}" ${attrs}>${icon("check")}<span>${esc(label)}</span></button>`;
 }
 
 function renderFilterChips() {
   $("fAreas").innerHTML = NEIGHBORHOOD_NAMES.map((name) =>
-    chip(name, state.filters.areas.has(name), `data-area="${esc(name)}"`)).join("");
+    chip(L.area(name), state.filters.areas.has(name), `data-area="${esc(name)}"`)).join("");
   $("fBonuses").innerHTML = BONUS_NAMES.map((name) =>
-    chip(`✓ ${name}`, state.filters.bonuses.has(name), `data-bonus="${esc(name)}"`)).join("");
+    chip(L.extra(name), state.filters.bonuses.has(name), `data-bonus="${esc(name)}"`)).join("");
 }
 
 function inTab(listing, tab) {
@@ -186,6 +191,11 @@ function inTab(listing, tab) {
   if (tab === "saved") return listing.saved;
   if (tab === "all") return !listing.seeking;
   return listing.status === tab;
+}
+
+function activeFilterCount() {
+  const f = state.filters;
+  return (f.text ? 1 : 0) + (f.price ? 1 : 0) + (f.rooms ? 1 : 0) + f.areas.size + f.bonuses.size;
 }
 
 function passesFilters(listing) {
@@ -212,41 +222,56 @@ function sortListings(list) {
 function card(listing) {
   const image = safeUrl(listing.image);
   const link = safeUrl(listing.url) || safeUrl(listing.source);
-  const area = listing.neighborhoods[0] || "תל אביב";
+  const area = listing.neighborhoods[0] ? L.area(listing.neighborhoods[0]) : t("telAviv");
   const isNew = Date.now() - listing.firstSeen < NEW_WINDOW_MS && !listing.fromBackfill;
-  const statusBadge = {match: ["match", "מתאימה"], review: ["review", "חסרים פרטים"], rejected: ["", "לא מתאימה"]}[listing.status];
+  const status = {match: ["match", t("statusMatch")], review: ["review", t("statusReview")], rejected: ["rejected", t("statusRejected")]}[listing.status];
   const open = state.openTexts.has(listing.id);
   const spec = (value, unit) => value != null
-    ? `<span>${esc(value)} ${unit}</span>` : `<span class="unknown">? ${unit}</span>`;
+    ? `<span>${esc(num(value))} ${unit}</span>`
+    : `<span class="unknown" title="${esc(t("statusReview"))}">? ${unit}</span>`;
+  const when = listing.postedLabel || L.timeAgo(listing.firstSeen);
+  const areas = listing.neighborhoods.map(L.area).join(" · ") || t("telAviv");
   return `
-    <article class="card" data-id="${esc(listing.id)}">
+    <article class="card${listing.hidden ? " is-hidden" : ""}" data-id="${esc(listing.id)}">
       <div class="media">
-        ${image ? `<img src="${esc(image)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback>` : ""}
-        <div class="placeholder" ${image ? "hidden" : ""}>${esc(area)}</div>
-        <span class="badge ${statusBadge[0]}">${statusBadge[1]}</span>
-        ${isNew ? `<span class="badge new">חדש</span>` : ""}
+        ${image ? `<img src="${esc(image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-fallback>` : ""}
+        <div class="placeholder" ${image ? "hidden" : ""}>${icon("home")}<span>${esc(area)}</span></div>
+        <div class="badges">
+          <span class="badge ${status[0]}">${status[1]}</span>
+          ${isNew ? `<span class="badge new">${t("isNew")}</span>` : ""}
+        </div>
+        <button type="button" class="save${listing.saved ? " on" : ""}" data-action="save" aria-pressed="${listing.saved}"
+          aria-label="${esc(listing.saved ? t("unsave") : t("save_"))}">${icon("heart")}</button>
       </div>
       <div class="body">
-        <div class="price">${listing.price != null ? `${listing.price.toLocaleString("he-IL")} ₪ <small>לחודש</small>` : `<small>מחיר לא צוין</small>`}</div>
-        <div class="specs">${spec(listing.rooms, "חדרים")}${spec(listing.bathrooms, "שירותים")}</div>
-        <div class="tags">
-          ${listing.neighborhoods.map((n) => `<span class="tag area">${esc(n)}</span>`).join("")}
-          ${listing.bonuses.map((b) => `<span class="tag">${esc(b)}</span>`).join("")}
-        </div>
-        <p class="excerpt ${open ? "open" : ""}">${esc(listing.text)}</p>
-        <button class="more" data-action="toggle-text">${open ? "הצג פחות" : "קרא עוד"}</button>
-        ${listing.status !== "match" ? `<p class="reasons">${esc(listing.reasons.join(" · "))}</p>` : ""}
-        ${listing.saved && listing.markedBy ? `<p class="marked">★ נשמרה ע״י ${esc(listing.markedBy)}</p>` : ""}
+        <p class="price">${listing.price != null
+          ? `<bdi>${L.lang === "en" ? `₪${esc(num(listing.price))}` : `${esc(num(listing.price))} ₪`}</bdi> <small>${t("perMonth")}</small>`
+          : `<span class="no-price">${t("noPrice")}</span>`}</p>
+        <p class="specs">${spec(listing.rooms, t("rooms"))}<span class="sep" aria-hidden="true">·</span>${spec(listing.bathrooms, t("baths"))}</p>
+        <p class="where"><span class="area">${esc(areas)}</span><span class="sep" aria-hidden="true">·</span><span>${esc(when)}</span></p>
+        ${listing.bonuses.length ? `<ul class="tags">${listing.bonuses.map((b) => `<li>${esc(L.extra(b))}</li>`).join("")}</ul>` : ""}
+        ${listing.status !== "match" ? `<p class="reasons ${status[0]}">${esc(listing.reasons.map(L.reason).join(" · "))}</p>` : ""}
+        ${listing.saved && listing.markedBy ? `<p class="marked">${icon("heart")}${esc(t("savedBy", listing.markedBy))}</p>` : ""}
+        <p class="excerpt${open ? " open" : ""}" dir="auto">${esc(listing.text)}</p>
+        <button type="button" class="link-btn more" data-action="toggle-text" aria-expanded="${open}">${open ? t("readLess") : t("readMore")}</button>
       </div>
       <div class="foot">
-        <span class="source" title="${esc(listing.sourceName)}">${esc(listing.sourceName || "פייסבוק")} · ${esc(listing.postedLabel || timeAgo(listing.firstSeen))}</span>
+        <span class="source" title="${esc(listing.sourceName)}" dir="auto">${esc(listing.sourceName || t("facebook"))}</span>
         <span class="actions">
-          <button data-action="save" class="${listing.saved ? "saved" : ""}" title="שמור" aria-label="שמור">${listing.saved ? "★" : "☆"}</button>
-          <button data-action="hide" title="${listing.hidden ? "החזר" : "הסתר"}" aria-label="${listing.hidden ? "החזר" : "הסתר"}">${listing.hidden ? "↺" : "✕"}</button>
-          ${link ? `<a class="open" href="${esc(link)}" target="_blank" rel="noopener noreferrer">לפוסט ↗</a>` : ""}
+          <button type="button" class="icon-btn" data-action="hide" aria-label="${esc(listing.hidden ? t("unhide") : t("hide"))}"
+            title="${esc(listing.hidden ? t("unhide") : t("hide"))}">${icon(listing.hidden ? "undo" : "hide")}</button>
+          ${link ? `<a class="btn small open" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${t("openPost")}${icon("ext")}</a>` : ""}
         </span>
       </div>
     </article>`;
+}
+
+function skeletons(count = 6) {
+  return Array.from({length: count}, () => `
+    <div class="card skeleton" aria-hidden="true">
+      <div class="media"></div>
+      <div class="body"><span class="bone w40 tall"></span><span class="bone w60"></span><span class="bone w80"></span></div>
+    </div>`).join("");
 }
 
 function renderStatus() {
@@ -254,47 +279,100 @@ function renderStatus() {
   const el = $("scanStatus");
   const pending = state.pendingRequest && state.pendingRequest.at > (scan.startedAt || 0) && Date.now() - state.pendingRequest.at < 5 * 60000;
   $("stopScan").hidden = !scan.running;
-  $("scanNow").disabled = !!scan.running || !!pending;
+  $("scanNow").hidden = !!scan.running;
+  $("scanNow").disabled = !!pending;
   $("progress").hidden = !scan.running;
-  const synced = state.payload.updatedAt ? ` · עודכן ${timeAgo(state.payload.updatedAt)}` : "";
-  if (pending && !scan.running) {
-    el.innerHTML = `<span class="dot live"></span>${state.pendingRequest.mode === "stop" ? "עוצר…" : "ממתין שהמחשב יתחיל לסרוק (עד דקה)…"}`;
+  const synced = state.payload.updatedAt ? ` · ${t("updated", L.timeAgo(state.payload.updatedAt))}` : "";
+  let dot = "";
+  let text;
+  if (!state.loaded) {
+    text = t("loading");
+  } else if (pending && !scan.running) {
+    dot = "live";
+    text = state.pendingRequest.mode === "stop" ? t("stopping") : t("waitingForComputer");
   } else if (scan.running) {
-    const label = scan.mode === "backfill" ? "סורק שבועיים אחורה" : "סורק";
-    el.innerHTML = `<span class="dot live"></span>${label} · קבוצה ${Math.min((scan.groupIndex || 0) + 1, scan.total || 1)} מתוך ${scan.total || "?"}${synced}`;
-    $("progressBar").style.width = `${Math.round(((scan.groupIndex || 0) / Math.max(scan.total || 1, 1)) * 100)}%`;
+    dot = "live";
+    const label = scan.mode === "backfill" ? t("scanningBack") : t("scanning");
+    const index = Math.min((scan.groupIndex || 0) + 1, scan.total || 1);
+    text = `${label} · ${t("groupOf", index, scan.total || "?")}${synced}`;
+    $("progressBar").style.transform = `scaleX(${Math.min(1, (scan.groupIndex || 0) / Math.max(scan.total || 1, 1))})`;
   } else if (scan.lastError) {
-    el.innerHTML = `<span class="dot err"></span>${esc(scan.lastError)}${synced}`;
+    dot = "err";
+    text = `${scan.lastError}${synced}`;
   } else if (scan.lastRun) {
-    const next = state.config.enabled ? "" : " · הניטור כבוי";
-    el.innerHTML = `<span class="dot"></span>סריקה אחרונה ${esc(timeAgo(scan.lastRun))} · ${scan.lastCounts?.new ?? 0} חדשות${next}`;
+    dot = state.config.enabled ? "ok" : "";
+    text = t("lastScan", L.timeAgo(scan.lastRun), scan.lastCounts?.new ?? 0) + (state.config.enabled ? "" : ` · ${t("monitoringOff")}`);
   } else {
-    el.innerHTML = `<span class="dot"></span>${state.config.enabled ? "הסריקה הראשונה תתחיל כשהמחשב יהיה ער ו־Chrome פתוח" : "הניטור כבוי — פתח הגדרות כדי להתחיל"}`;
+    text = state.config.enabled ? t("firstScanSoon") : t("offOpenSettings");
+  }
+  el.innerHTML = `<span class="dot ${dot}"></span><span>${esc(text)}</span>`;
+}
+
+function renderEmpty(visibleCount, allCount) {
+  const filtered = activeFilterCount() > 0;
+  let title, text, action = null;
+  if (!allCount && state.payload.scan?.running) {
+    title = t("emptyScanningTitle"); text = t("emptyScanning");
+  } else if (!allCount) {
+    title = t("emptyNoDataTitle"); text = t("emptyNoData");
+    if (!state.config.enabled) action = ["settings", t("openSettings")];
+  } else if (filtered) {
+    title = t("emptyFilteredTitle"); text = t("emptyFiltered"); action = ["clear", t("clearFilters")];
+  } else {
+    title = t("emptyTabTitle")[state.tab]; text = t("emptyTab")[state.tab];
+  }
+  $("empty").hidden = visibleCount > 0 || !state.loaded;
+  $("emptyTitle").textContent = title;
+  $("emptyText").textContent = text;
+  $("emptyText").hidden = !text;
+  $("emptyAction").hidden = !action;
+  if (action) {
+    $("emptyAction").textContent = action[1];
+    $("emptyAction").dataset.do = action[0];
   }
 }
 
 function render() {
   const all = Object.values(state.listings);
   for (const tab of ["match", "review", "all", "saved", "hidden"]) {
-    $(`count-${tab}`).textContent = all.filter((l) => inTab(l, tab)).length;
+    $(`count-${tab}`).textContent = num(all.filter((l) => inTab(l, tab)).length);
   }
-  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
-  const visible = sortListings(all.filter((l) => inTab(l, state.tab) && passesFilters(l)));
-  $("grid").innerHTML = visible.slice(0, 400).map(card).join("");
-  $("grid").querySelectorAll("img[data-fallback]").forEach((img) => {
-    img.addEventListener("error", () => { img.nextElementSibling?.removeAttribute("hidden"); img.remove(); }, {once: true});
+  document.querySelectorAll(".tabs [data-tab]").forEach((b) => {
+    const active = b.dataset.tab === state.tab;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", String(active));
   });
-  $("resultLine").textContent = visible.length ? `${visible.length} דירות` : "";
-  $("empty").hidden = visible.length > 0;
-  $("emptyText").textContent = all.length
-    ? "אין דירות שמתאימות לסינון הזה."
-    : state.payload.scan?.running ? "הסריקה רצה — הדירות יופיעו כאן בהמשך." : "עדיין אין כאן דירות.";
+  const visible = sortListings(all.filter((l) => inTab(l, state.tab) && passesFilters(l)));
+  const grid = $("grid");
+  grid.innerHTML = state.loaded ? visible.slice(0, 400).map(card).join("") : skeletons();
+  grid.setAttribute("aria-busy", String(!state.loaded));
+  grid.querySelectorAll("img[data-fallback]").forEach((img) => {
+    img.addEventListener("error", () => { img.nextElementSibling?.removeAttribute("hidden"); img.remove(); }, {once: true});
+    img.addEventListener("load", () => img.classList.add("loaded"), {once: true});
+    if (img.complete && img.naturalWidth) img.classList.add("loaded");
+  });
+  const filters = activeFilterCount();
+  $("resultLine").textContent = state.loaded && visible.length ? t("results", visible.length) : "";
+  $("clearFilters").hidden = !filters;
+  $("filtersCount").hidden = !filters;
+  $("filtersCount").textContent = filters;
+  renderEmpty(visible.length, all.length);
   const c = state.config;
   const tgDone = !isOwner() || !!(state.secretsFile.telegramToken && c.telegramChatId);
-  $("onboarding").hidden = tgDone && c.enabled;
+  $("onboarding").hidden = !state.loaded || (tgDone && c.enabled);
   $("stepTg").classList.toggle("done", tgDone);
   $("stepOn").classList.toggle("done", c.enabled);
   renderStatus();
+  renderBanner();
+}
+
+function clearFilters() {
+  state.filters = {...state.filters, text: "", price: "", rooms: "", areas: new Set(), bonuses: new Set()};
+  $("fText").value = "";
+  $("fPrice").value = "";
+  $("fRooms").value = "";
+  renderFilterChips();
+  render();
 }
 
 // ---------- settings ----------
@@ -309,7 +387,7 @@ function debugReport() {
     lines.push(`  units ${d.units ?? "?"} · message-nodes ${d.withMessageNode ?? "?"} · links ${d.withPermalink ?? "?"} · posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"}`);
     (d.samples || []).forEach((sample) => lines.push(`  > ${sample.replace(/\s+/g, " ").slice(0, 120)}`));
   }
-  if (!Object.keys(p.debug || {}).length) lines.push("", "עדיין לא רצה סריקה.");
+  if (!Object.keys(p.debug || {}).length) lines.push("", t("noScanYet"));
   return lines.join("\n");
 }
 
@@ -330,14 +408,14 @@ function renderMembers() {
   const members = state.secretsFile.members || [];
   $("members").innerHTML = members.length ? members.map((m, i) => `
     <div class="member">
-      <div><b>${esc(m.name)}</b> <span class="fineprint">· נוסף ${esc(timeAgo(m.at))}</span></div>
+      <div class="member-head"><b>${esc(m.name)}</b><span class="hint">${esc(t("memberAdded", L.timeAgo(m.at)))}</span></div>
       <div class="member-actions">
-        <button type="button" class="btn ghost small" data-member-copy="${i}">העתק קישור</button>
-        <button type="button" class="btn ghost small" data-member-qr="${i}">ברקוד</button>
-        <button type="button" class="btn ghost small" data-member-remove="${i}">הסר</button>
+        <button type="button" class="btn ghost small" data-member-copy="${i}">${t("copyMemberLink")}</button>
+        <button type="button" class="btn ghost small" data-member-qr="${i}">${t("showQr")}</button>
+        <button type="button" class="btn ghost small danger" data-member-remove="${i}">${t("remove")}</button>
       </div>
       <div class="qr" id="memberQr${i}" hidden></div>
-    </div>`).join("") : `<p class="fineprint">עדיין לא שיתפת את הלוח.</p>`;
+    </div>`).join("") : `<p class="hint">${t("noMembers")}</p>`;
 }
 
 function fillSettings() {
@@ -351,31 +429,41 @@ function fillSettings() {
   $("sMinRooms").value = c.criteria.minRooms;
   $("sMinBaths").value = c.criteria.minBathrooms;
   $("sAreas").innerHTML = NEIGHBORHOOD_NAMES.map((name) =>
-    chip(name, c.criteria.neighborhoods.includes(name), `data-setting-area="${esc(name)}"`)).join("");
+    chip(L.area(name), c.criteria.neighborhoods.includes(name), `data-setting-area="${esc(name)}"`)).join("");
   $("sGroups").value = c.groupUrls.join("\n");
   $("sInterval").value = c.intervalMinutes;
   $("sEnabled").checked = c.enabled;
-  $("settingsStatus").textContent = "";
+  setSettingsStatus("");
   $("debugView").textContent = debugReport();
-  if (window.qrcode) {
-    const qr = window.qrcode(0, "M");
-    qr.addData(personalLink());
-    qr.make();
-    $("qr").innerHTML = qr.createSvgTag({cellSize: 4, margin: 3, scalable: true});
-  } else {
-    $("qr").textContent = "לא הצלחתי לטעון את הברקוד — השתמש ב״העתק קישור אישי״.";
-  }
+  const svg = qrSvg(personalLink());
+  if (svg) $("qr").innerHTML = svg;
+  else $("qr").textContent = t("qrFailed");
 }
 
+let lastFocus = null;
 function openSettings() {
   fillSettings();
-  $("settings").hidden = false;
-  $("scrim").hidden = false;
+  lastFocus = document.activeElement;
+  document.body.classList.add("drawer-open");
+  $("settings").inert = false;
+  $("app").inert = true;
+  $("closeSettings").focus({preventScroll: true});
 }
 
-function closeSettings() {
-  $("settings").hidden = true;
-  $("scrim").hidden = true;
+function closeSettings({instant = false} = {}) {
+  if (!document.body.classList.contains("drawer-open")) return;
+  if (instant) {
+    $("settings").classList.add("instant");
+    $("scrim").classList.add("instant");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      $("settings").classList.remove("instant");
+      $("scrim").classList.remove("instant");
+    }));
+  }
+  document.body.classList.remove("drawer-open");
+  $("settings").inert = true;
+  $("app").inert = false;
+  lastFocus?.focus?.({preventScroll: true});
 }
 
 function setSettingsStatus(text, isError = false) {
@@ -386,11 +474,11 @@ function setSettingsStatus(text, isError = false) {
 function readSettings() {
   const groupUrls = $("sGroups").value.split("\n").map((s) => s.trim()).filter(Boolean);
   const bad = groupUrls.find((url) => !/^https:\/\/(www\.)?facebook\.com\/groups\//i.test(url));
-  if (bad) throw new Error(`קישור לא תקין: ${bad}`);
+  if (bad) throw new Error(t("badGroupUrl", bad));
   const token = $("sToken").value.trim();
-  if (token && !/^\d+:[\w-]{20,}$/.test(token)) throw new Error("הטוקן של הבוט לא נראה תקין");
+  if (token && !/^\d+:[\w-]{20,}$/.test(token)) throw new Error(t("badToken"));
   const chat = $("sChat").value.split(/[,\s]+/).filter(Boolean).join(", ");
-  if (chat && !chat.split(", ").every((id) => /^-?\d+$/.test(id))) throw new Error("מזהי צ׳אט צריכים להיות מספרים, מופרדים בפסיק");
+  if (chat && !chat.split(", ").every((id) => /^-?\d+$/.test(id))) throw new Error(t("badChat"));
   const areas = [...$("sAreas").querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.settingArea);
   return {
     ...state.config,
@@ -418,20 +506,22 @@ async function saveSettings(event) {
     setSettingsStatus(error.message, true);
     return false;
   }
-  setSettingsStatus("שומר…");
+  setSettingsStatus(t("saving"));
+  const submit = $("settingsForm").querySelector('[type="submit"]');
+  submit.disabled = true;
   const {telegramToken, ...publicConfig} = config;
   try {
     await writeConfig(publicConfig);
     if (isOwner() && telegramToken !== (state.secretsFile.telegramToken || "")) await writeSecrets({telegramToken});
   } catch (error) {
-    setSettingsStatus(`השמירה נכשלה: ${error.message}`, true);
+    setSettingsStatus(t("errSave", error.message), true);
     return false;
+  } finally {
+    submit.disabled = false;
   }
   reparse();
   render();
-  setSettingsStatus(config.enabled
-    ? "נשמר ✓ המחשב יקבל את ההגדרות תוך כדקה."
-    : "נשמר ✓ הניטור כבוי.");
+  setSettingsStatus(config.enabled ? t("savedOn") : t("savedOff"));
   return true;
 }
 
@@ -445,23 +535,28 @@ function tokenLinkFor(name) {
   return `https://github.com/settings/personal-access-tokens/new?${params}`;
 }
 
+function setShareStatus(text, isError = false) {
+  $("shareStatus").textContent = text;
+  $("shareStatus").classList.toggle("err", isError);
+}
+
 async function addMember() {
   const name = $("mName").value.trim().slice(0, 30);
   const token = $("mToken").value.trim();
-  if (!name) return setShareStatus("כתוב שם", true);
-  if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(token)) return setShareStatus("זה לא נראה כמו מפתח GitHub (מתחיל ב־github_pat_)", true);
-  setShareStatus("בודק את המפתח…");
+  if (!name) return setShareStatus(t("writeName"), true);
+  if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(token)) return setShareStatus(t("notGithubKey"), true);
+  setShareStatus(t("checkingKey"));
   try {
     await Sync.checkToken(token);
   } catch (error) {
-    return setShareStatus(error.status === 401 ? "המפתח לא תקין" : `למפתח אין הרשאה: ${error.message}`, true);
+    return setShareStatus(error.status === 401 ? t("keyInvalid") : t("keyNoAccess", error.message), true);
   }
   const link = Sync.appLink(token, state.secrets.key, {name});
   const members = [...(state.secretsFile.members || []), {name, link, at: Date.now()}];
   try {
     await writeSecrets({members});
   } catch (error) {
-    return setShareStatus(`השמירה נכשלה: ${error.message}`, true);
+    return setShareStatus(t("errSave", error.message), true);
   }
   $("mName").value = "";
   $("mToken").value = "";
@@ -469,8 +564,8 @@ async function addMember() {
   const index = members.length - 1;
   $(`memberQr${index}`).innerHTML = qrSvg(link);
   $(`memberQr${index}`).hidden = false;
-  await navigator.clipboard.writeText(link).catch(() => {});
-  setShareStatus(`הקישור של ${name} מוכן והועתק. שלח לה אותו (או שתסרוק את הברקוד).`);
+  await copy(link);
+  setShareStatus(t("memberReady", name));
 }
 
 async function memberAction(target) {
@@ -479,8 +574,8 @@ async function memberAction(target) {
   const member = members[index];
   if (!member) return;
   if (target.dataset.memberCopy != null) {
-    await navigator.clipboard.writeText(member.link).catch(() => {});
-    return setShareStatus(`הקישור של ${member.name} הועתק.`);
+    await copy(member.link);
+    return setShareStatus(t("memberCopied", member.name));
   }
   if (target.dataset.memberQr != null) {
     const box = $(`memberQr${index}`);
@@ -488,16 +583,25 @@ async function memberAction(target) {
     box.hidden = !box.hidden;
     return;
   }
-  if (!confirm(`להסיר את ${member.name}? כדי לחסום את הגישה לגמרי צריך גם למחוק את המפתח שלה ב־GitHub.`)) return;
-  await writeSecrets({members: members.filter((_, i) => i !== index)});
+  // Removing needs a second click on the same button instead of a browser dialog.
+  if (target.dataset.confirming !== "1") {
+    target.dataset.confirming = "1";
+    target.textContent = t("confirmRemove", member.name);
+    setTimeout(() => {
+      if (!target.isConnected) return;
+      target.dataset.confirming = "";
+      target.textContent = t("remove");
+    }, 4000);
+    return;
+  }
+  try {
+    await writeSecrets({members: members.filter((_, i) => i !== index)});
+  } catch (error) {
+    return setShareStatus(t("errSave", error.message), true);
+  }
   renderMembers();
-  setShareStatus(`${member.name} הוסרה מהרשימה. עכשיו מחק את המפתח "Apartment Hunter - ${member.name}" בדף שנפתח.`);
+  setShareStatus(t("memberRemoved", member.name));
   window.open("https://github.com/settings/personal-access-tokens", "_blank", "noopener");
-}
-
-function setShareStatus(text, isError = false) {
-  $("shareStatus").textContent = text;
-  $("shareStatus").classList.toggle("err", isError);
 }
 
 // ---------- events ----------
@@ -505,6 +609,12 @@ function setShareStatus(text, isError = false) {
 document.addEventListener("click", async (event) => {
   const target = event.target.closest("button, a");
   if (!target) return;
+  if (target.matches("[data-lang-toggle]")) {
+    L.setLang(L.lang === "he" ? "en" : "he");
+    renderFilterChips();
+    if (document.body.classList.contains("drawer-open")) fillSettings();
+    return render();
+  }
   if (target.matches("[data-open-settings]")) return openSettings();
   if (target.dataset.memberCopy || target.dataset.memberQr || target.dataset.memberRemove) return memberAction(target);
   if (target.dataset.tab) { state.tab = target.dataset.tab; return render(); }
@@ -512,7 +622,7 @@ document.addEventListener("click", async (event) => {
     const set = target.dataset.area ? state.filters.areas : state.filters.bonuses;
     const value = target.dataset.area || target.dataset.bonus;
     set.has(value) ? set.delete(value) : set.add(value);
-    renderFilterChips();
+    target.setAttribute("aria-pressed", String(set.has(value)));
     return render();
   }
   if (target.dataset.settingArea) {
@@ -535,35 +645,41 @@ document.addEventListener("click", async (event) => {
 });
 
 $("openSettings").addEventListener("click", openSettings);
-$("closeSettings").addEventListener("click", closeSettings);
-$("scrim").addEventListener("click", closeSettings);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+$("closeSettings").addEventListener("click", () => closeSettings());
+$("scrim").addEventListener("click", () => closeSettings());
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings({instant: true}); });
 $("settingsForm").addEventListener("submit", saveSettings);
-$("scanNow").addEventListener("click", () => requestScan("quick").catch((e) => showBanner(e.message)));
-$("stopScan").addEventListener("click", () => requestScan("stop").catch((e) => showBanner(e.message)));
+$("scanNow").addEventListener("click", () => requestScan("quick").catch((e) => showBanner("errSave", e.message)));
+$("stopScan").addEventListener("click", () => requestScan("stop").catch((e) => showBanner("errSave", e.message)));
+$("clearFilters").addEventListener("click", clearFilters);
+$("emptyAction").addEventListener("click", (e) => (e.currentTarget.dataset.do === "clear" ? clearFilters() : openSettings()));
+$("filtersToggle").addEventListener("click", (e) => {
+  const open = document.body.classList.toggle("filters-open");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
 $("backfill").addEventListener("click", async () => {
   if (!(await saveSettings())) return;
   await requestScan("backfill");
-  setSettingsStatus("ביקשתי סריקה של שבועיים אחורה. המחשב יתחיל תוך כדקה.");
+  setSettingsStatus(t("backfillRequested"));
 });
 $("testTelegram").addEventListener("click", async () => {
   const token = $("sToken").value.trim();
   const chats = $("sChat").value.split(/[,\s]+/).filter(Boolean);
-  if (!token || !chats.length) return setSettingsStatus("מלא קודם טוקן ומזהה צ׳אט", true);
-  setSettingsStatus("שולח…");
+  if (!token || !chats.length) return setSettingsStatus(t("fillTelegramFirst"), true);
+  setSettingsStatus(t("sending"));
   try {
     for (const chat of chats) {
       const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({chat_id: chat, text: "✅ החיבור עובד! כאן יגיעו התראות על דירות חדשות."}),
+        body: JSON.stringify({chat_id: chat, text: `✅ ${t("telegramTestText")}`}),
       });
       const result = await response.json();
       if (!result.ok) throw new Error(`${chat}: ${result.description}`);
     }
-    setSettingsStatus(`נשלחה הודעה ל־${chats.length} צ׳אטים — בדוק בטלגרם ✓ (אל תשכח ללחוץ שמור)`);
+    setSettingsStatus(t("telegramSent", chats.length));
   } catch (error) {
-    setSettingsStatus(`טלגרם החזיר שגיאה: ${error.message}`, true);
+    setSettingsStatus(t("telegramError", error.message), true);
   }
 });
 $("addMember").addEventListener("click", addMember);
@@ -571,34 +687,34 @@ $("mName").addEventListener("input", () => {
   $("mTokenLink").href = tokenLinkFor($("mName").value.trim() || "partner");
 });
 $("copyLink").addEventListener("click", async () => {
-  await navigator.clipboard.writeText(personalLink()).catch(() => {});
-  setSettingsStatus("הקישור הועתק.");
+  await copy(personalLink());
+  setSettingsStatus(t("linkCopied"));
 });
 $("copyDebug").addEventListener("click", async () => {
   const text = debugReport();
   $("debugView").textContent = text;
-  await navigator.clipboard.writeText(text).catch(() => {});
-  setSettingsStatus("הדוח הועתק — הדבק אותו בצ׳אט.");
+  await copy(text);
+  setSettingsStatus(t("reportCopied"));
 });
 $("logout").addEventListener("click", () => {
   try { localStorage.removeItem("hunter-secrets"); } catch {}
   location.reload();
 });
 
-const debounce = (fn, ms = 200) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const debounce = (fn, ms = 200) => { let timer; return (...a) => { clearTimeout(timer); timer = setTimeout(() => fn(...a), ms); }; };
 $("fText").addEventListener("input", debounce((e) => { state.filters.text = e.target.value.trim(); render(); }));
-$("fPrice").addEventListener("input", debounce((e) => { state.filters.price = e.target.value; render(); }));
+$("fPrice").addEventListener("change", (e) => { state.filters.price = e.target.value; render(); });
 $("fRooms").addEventListener("change", (e) => { state.filters.rooms = e.target.value; render(); });
 $("fSort").addEventListener("change", (e) => { state.filters.sort = e.target.value; render(); });
 
 // ---------- start ----------
 
+L.apply();
 state.secrets = readSecrets();
 if (!state.secrets) {
   $("gate").hidden = false;
 } else {
   $("app").hidden = false;
-  if (matchMedia("(max-width: 640px)").matches) $("filtersWrap").open = false;
   renderFilterChips();
   render();
   refresh();

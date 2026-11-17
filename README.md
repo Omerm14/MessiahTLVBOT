@@ -1,4 +1,4 @@
-# Telegram Apartment Hunter TLV
+# Messiah TLV APT Hunter
 
 MVP חינמי שמנטר מהמחשב האישי קבוצות Facebook שנבחרו, מסנן מודעות ושולח התאמות ל־Telegram. אפשר גם להעביר לבוט הודעות וקישורים באופן ידני.
 

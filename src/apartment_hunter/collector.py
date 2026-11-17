@@ -95,14 +95,14 @@ def process_posts(
             counts["matches"] += 1
             telegram.send_message(
                 alert_chat_id,
-                f"🚨 נמצאה התאמה בפייסבוק!\n\n{format_listing(listing, saved.listing_id)}",
+                f"🏠 דירה חדשה שמתאימה לך\n\n{format_listing(listing, saved.listing_id)}",
             )
         elif listing.status == "review":
             counts["review"] += 1
             if alert_on_review:
                 telegram.send_message(
                     alert_chat_id,
-                    "🟡 פוסט מפייסבוק מחכה לבדיקה.\n"
+                    "🔎 דירה חדשה לבדיקה\n"
                     f"{'; '.join(listing.reasons)}\n\n{format_listing(listing, saved.listing_id)}",
                 )
     return counts

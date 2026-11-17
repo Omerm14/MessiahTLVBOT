@@ -29,7 +29,7 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(first["matches"], 1)
             self.assertEqual(second["duplicates"], 1)
             self.assertEqual(len(telegram.messages), 1)
-            self.assertIn("נמצאה התאמה בפייסבוק", telegram.messages[0][1])
+            self.assertIn("דירה חדשה שמתאימה לך", telegram.messages[0][1])
             storage.close()
 
     def test_review_post_is_saved_without_alert_by_default(self):

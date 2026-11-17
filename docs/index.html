@@ -3,166 +3,247 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>צייד הדירות TLV</title>
-  <meta name="theme-color" content="#0f6e63">
+  <title>Messiah TLV APT Hunter</title>
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="צייד הדירות">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="APT Hunter">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-10.6A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 8 2.6c0 5.7-8 10.6-8 10.6z"/></symbol>
+    <symbol id="i-hide" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.7M6.3 6.3A17 17 0 0 0 2.5 12S6 19 12 19a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  </svg>
+
   <section id="gate" class="gate" hidden>
-    <div class="gate-card">
-      <div class="logo big" aria-hidden="true">⌂</div>
-      <h1>צייד הדירות TLV</h1>
-      <p>כדי לפתוח את האפליקציה צריך קישור אישי.</p>
-      <ul>
-        <li><b>במחשב:</b> לחץ על אייקון התוסף צייד הדירות בסרגל של Chrome.</li>
-        <li><b>בטלפון:</b> במחשב, פתח באפליקציה את <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.</li>
+    <div class="gate-inner">
+      <div class="gate-brand">
+        <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-home"/></svg></span>
+        <h1 data-i18n="appName">Messiah TLV APT Hunter</h1>
+      </div>
+      <p data-i18n="gateLead">כדי לפתוח את הלוח צריך קישור אישי.</p>
+      <ul class="gate-steps">
+        <li data-i18n-html="gateDesktop"><b>במחשב:</b> לחץ על אייקון Messiah TLV בסרגל של Chrome.</li>
+        <li data-i18n-html="gatePhone"><b>בטלפון:</b> פתח את הלוח במחשב, עבור אל <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.</li>
       </ul>
+      <button type="button" class="btn ghost small lang-toggle" data-lang-toggle>English</button>
     </div>
   </section>
 
   <div id="app" hidden>
     <header class="topbar">
-      <div class="brand">
-        <span class="logo" aria-hidden="true">⌂</span>
-        <div>
-          <h1>צייד הדירות TLV</h1>
-          <p id="scanStatus" class="scan-status">טוען…</p>
+      <div class="topbar-inner">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-home"/></svg></span>
+          <div class="brand-text">
+            <h1 data-i18n="appName">Messiah TLV APT Hunter</h1>
+            <p id="scanStatus" class="scan-status" role="status" aria-live="polite"><span class="dot"></span><span data-i18n="loading">טוען…</span></p>
+          </div>
         </div>
-      </div>
-      <div class="top-actions">
-        <button id="scanNow" class="btn primary">סרוק עכשיו</button>
-        <button id="stopScan" class="btn ghost" hidden>עצור</button>
-        <button id="openSettings" class="btn ghost">הגדרות</button>
+        <div class="top-actions">
+          <button type="button" class="btn quiet lang-toggle" data-lang-toggle aria-label="Switch to English">EN</button>
+          <button type="button" id="openSettings" class="btn ghost" aria-haspopup="dialog">
+            <svg class="ic"><use href="#i-settings"/></svg><span data-i18n="settings">הגדרות</span>
+          </button>
+          <button type="button" id="stopScan" class="btn ghost" hidden>
+            <svg class="ic"><use href="#i-stop"/></svg><span data-i18n="stop">עצור</span>
+          </button>
+          <button type="button" id="scanNow" class="btn primary">
+            <svg class="ic"><use href="#i-scan"/></svg><span data-i18n="scanNow">סרוק עכשיו</span>
+          </button>
+        </div>
       </div>
       <div id="progress" class="progress" hidden><div id="progressBar"></div></div>
     </header>
 
-    <section id="onboarding" class="onboarding" hidden>
-      <h2>עוד שני צעדים</h2>
-      <ol>
-        <li id="stepTg">בהגדרות: הדבק את טוקן הבוט ואת מזהה הצ׳אט (שלח <b><bdi dir="ltr">/id</bdi></b> לבוט בטלגרם כדי לקבל אותו).</li>
-        <li id="stepOn">סמן <b>ניטור פעיל</b> ושמור. הסריקה הראשונה תביא את השבועיים האחרונים (כ־20–30 דקות), כל עוד המחשב ער ו־Chrome פתוח.</li>
-      </ol>
-      <button class="btn primary" data-open-settings>פתח הגדרות</button>
-    </section>
-
-    <p id="banner" class="banner" hidden></p>
-
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="match" class="active">התאמות <span id="count-match" class="count">0</span></button>
-      <button role="tab" data-tab="review">לבדיקה <span id="count-review" class="count">0</span></button>
-      <button role="tab" data-tab="all">כל הדירות <span id="count-all" class="count">0</span></button>
-      <button role="tab" data-tab="saved">שמורות <span id="count-saved" class="count">0</span></button>
-      <button role="tab" data-tab="hidden">מוסתרות <span id="count-hidden" class="count">0</span></button>
-    </nav>
-
-    <details class="filters-wrap" id="filtersWrap" open>
-      <summary>סינון ומיון</summary>
-      <section class="filters">
-        <label class="field grow"><span>חיפוש חופשי</span>
-          <input id="fText" type="search" placeholder="רחוב, מילה מהמודעה…"></label>
-        <label class="field"><span>מחיר עד</span>
-          <input id="fPrice" type="number" step="500" min="0" inputmode="numeric" placeholder="ללא הגבלה"></label>
-        <label class="field"><span>חדרים מ־</span>
-          <select id="fRooms"><option value="">הכל</option><option>2</option><option>2.5</option><option>3</option>
-            <option>3.5</option><option>4</option><option>5</option></select></label>
-        <label class="field"><span>מיון</span>
-          <select id="fSort">
-            <option value="new">החדשות ביותר</option>
-            <option value="priceAsc">מחיר: מהנמוך</option>
-            <option value="priceDesc">מחיר: מהגבוה</option>
-            <option value="bonus">הכי הרבה בונוסים</option>
-          </select></label>
-        <div class="chips" id="fAreas" aria-label="אזורים"></div>
-        <div class="chips" id="fBonuses" aria-label="בונוסים"></div>
+    <div class="page">
+      <section id="onboarding" class="onboarding" hidden>
+        <div>
+          <h2 data-i18n="onbTitle">עוד שני צעדים והלוח מתחיל להתמלא</h2>
+          <ol>
+            <li id="stepTg"><span class="step-mark" aria-hidden="true"><svg class="ic"><use href="#i-check"/></svg></span><span data-i18n-html="onbTelegram">בהגדרות: הדבק את טוקן הבוט ואת מזהה הצ׳אט. שלח <bdi dir="ltr">/start</bdi> לבוט בטלגרם כדי לקבל את המזהה.</span></li>
+            <li id="stepOn"><span class="step-mark" aria-hidden="true"><svg class="ic"><use href="#i-check"/></svg></span><span data-i18n-html="onbEnable">סמן <b>ניטור פעיל</b> ושמור. הסריקה הראשונה מביאה את השבועיים האחרונים (20 עד 30 דקות), כל עוד המחשב ער ו־Chrome פתוח.</span></li>
+          </ol>
+        </div>
+        <button type="button" class="btn primary" data-open-settings data-i18n="openSettings">פתח הגדרות</button>
       </section>
-    </details>
 
-    <main>
-      <p id="resultLine" class="result-line"></p>
-      <div id="grid" class="grid"></div>
-      <div id="empty" class="empty" hidden>
-        <div class="empty-icon">⌂</div>
-        <p id="emptyText">עדיין אין כאן דירות.</p>
-      </div>
-    </main>
+      <p id="banner" class="banner" role="alert" hidden></p>
+
+      <section class="toolbar" aria-label="סינון ומיון" data-i18n-aria="filtersLabel">
+        <div class="toolbar-row">
+          <label class="search">
+            <svg class="ic"><use href="#i-search"/></svg>
+            <span class="sr-only" data-i18n="searchLabel">חיפוש חופשי</span>
+            <input id="fText" type="search" placeholder="רחוב, מילה מהמודעה…" data-i18n-placeholder="searchPlaceholder" autocomplete="off">
+          </label>
+          <button type="button" id="filtersToggle" class="btn ghost filters-toggle" aria-expanded="false" aria-controls="filtersPanel">
+            <svg class="ic"><use href="#i-filter"/></svg><span data-i18n="filters">סינון</span><span id="filtersCount" class="count-dot" hidden></span>
+          </button>
+        </div>
+        <div id="filtersPanel" class="filters-panel">
+          <div class="selects">
+            <label class="select">
+              <span data-i18n="priceUpTo">מחיר עד</span>
+              <select id="fPrice">
+                <option value="" data-i18n="any">הכל</option>
+                <option value="8000">8,000 ₪</option><option value="9000">9,000 ₪</option><option value="10000">10,000 ₪</option>
+                <option value="11000">11,000 ₪</option><option value="12000">12,000 ₪</option><option value="13000">13,000 ₪</option>
+                <option value="15000">15,000 ₪</option>
+              </select>
+              <svg class="ic caret" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </label>
+            <label class="select">
+              <span data-i18n="roomsFrom">חדרים</span>
+              <select id="fRooms">
+                <option value="" data-i18n="any">הכל</option><option value="2">2+</option><option value="2.5">2.5+</option>
+                <option value="3">3+</option><option value="3.5">3.5+</option><option value="4">4+</option><option value="5">5+</option>
+              </select>
+              <svg class="ic caret" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </label>
+            <label class="select">
+              <span data-i18n="sortBy">מיון</span>
+              <select id="fSort">
+                <option value="new" data-i18n="sortNew">החדשות ביותר</option>
+                <option value="priceAsc" data-i18n="sortPriceAsc">מחיר: מהנמוך</option>
+                <option value="priceDesc" data-i18n="sortPriceDesc">מחיר: מהגבוה</option>
+                <option value="bonus" data-i18n="sortBonus">הכי הרבה תוספות</option>
+              </select>
+              <svg class="ic caret" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </label>
+          </div>
+          <div class="chip-group">
+            <span class="chip-label" data-i18n="areas">אזורים</span>
+            <div class="chips" id="fAreas"></div>
+          </div>
+          <div class="chip-group">
+            <span class="chip-label" data-i18n="extras">תוספות</span>
+            <div class="chips" id="fBonuses"></div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="tabs" role="tablist" aria-label="תצוגות" data-i18n-aria="viewsLabel">
+        <button type="button" role="tab" data-tab="match" class="active"><span data-i18n="tabMatch">מתאימות</span> <span id="count-match" class="count">0</span></button>
+        <button type="button" role="tab" data-tab="review"><span data-i18n="tabReview">לבדיקה</span> <span id="count-review" class="count">0</span></button>
+        <button type="button" role="tab" data-tab="all"><span data-i18n="tabAll">כל הדירות</span> <span id="count-all" class="count">0</span></button>
+        <button type="button" role="tab" data-tab="saved"><span data-i18n="tabSaved">שמורות</span> <span id="count-saved" class="count">0</span></button>
+        <button type="button" role="tab" data-tab="hidden"><span data-i18n="tabHidden">מוסתרות</span> <span id="count-hidden" class="count">0</span></button>
+      </nav>
+
+      <main>
+        <div class="result-row">
+          <p id="resultLine" class="result-line"></p>
+          <button type="button" id="clearFilters" class="link-btn" hidden data-i18n="clearFilters">נקה סינון</button>
+        </div>
+        <div id="grid" class="grid" aria-live="polite"></div>
+        <div id="empty" class="empty" hidden>
+          <h2 id="emptyTitle"></h2>
+          <p id="emptyText"></p>
+          <button type="button" id="emptyAction" class="btn ghost" hidden></button>
+        </div>
+      </main>
+    </div>
   </div>
 
-  <aside id="settings" class="drawer" hidden>
+  <div id="scrim" class="scrim"></div>
+  <aside id="settings" class="drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" inert>
     <div class="drawer-head">
-      <h2>הגדרות</h2>
-      <button id="closeSettings" class="icon-btn" aria-label="סגור">✕</button>
+      <h2 id="settingsTitle" data-i18n="settings">הגדרות</h2>
+      <button type="button" id="closeSettings" class="icon-btn" aria-label="סגור" data-i18n-aria="close"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
-    <form id="settingsForm">
-      <fieldset>
-        <legend>טלגרם</legend>
-        <label class="field" data-owner-only><span>טוקן הבוט (מ־BotFather) — רק אתה רואה אותו</span>
-          <input id="sToken" type="password" autocomplete="off" dir="ltr" placeholder="123456:ABC…"></label>
-        <label class="field"><span>מזהי צ׳אט לקבלת התראות — אפשר כמה, מופרדים בפסיק. כל אחד שולח <bdi dir="ltr">/start</bdi> לבוט ומקבל את המספר שלו</span>
-          <input id="sChat" dir="ltr" placeholder="123456789, 987654321"></label>
-        <button type="button" id="testTelegram" class="btn ghost small" data-owner-only>שלח הודעת בדיקה</button>
-        <label class="check"><input id="sAlertReview" type="checkbox"> שלח התראה גם על דירות שחסרים בהן פרטים</label>
-      </fieldset>
-      <fieldset>
-        <legend>מה אני מחפש</legend>
+    <form id="settingsForm" class="drawer-body" novalidate>
+      <section class="group">
+        <h3 data-i18n="whatImLookingFor">מה אני מחפש</h3>
         <div class="row">
-          <label class="field"><span>מחיר מקסימלי</span><input id="sMaxPrice" type="number" step="500" inputmode="numeric"></label>
-          <label class="field"><span>חדרים לפחות</span><input id="sMinRooms" type="number" step="0.5" inputmode="decimal"></label>
-          <label class="field"><span>שירותים לפחות</span><input id="sMinBaths" type="number" step="1" inputmode="numeric"></label>
+          <label class="field"><span data-i18n="maxPrice">מחיר מקסימלי (₪)</span><input id="sMaxPrice" type="number" step="500" inputmode="numeric"></label>
+          <label class="field"><span data-i18n="minRooms">חדרים לפחות</span><input id="sMinRooms" type="number" step="0.5" inputmode="decimal"></label>
+          <label class="field"><span data-i18n="minBaths">שירותים לפחות</span><input id="sMinBaths" type="number" step="1" inputmode="numeric"></label>
         </div>
-        <span class="label">אזורים</span>
+        <span class="field-label" data-i18n="areas">אזורים</span>
         <div class="chips" id="sAreas"></div>
-      </fieldset>
-      <fieldset>
-        <legend>קבוצות פייסבוק וסריקה</legend>
-        <label class="field"><span>קישור אחד בכל שורה</span>
-          <textarea id="sGroups" dir="ltr" rows="7"></textarea></label>
-        <label class="field"><span>לסרוק כל (דקות, מינימום 10)</span>
+      </section>
+
+      <section class="group">
+        <h3 data-i18n="telegram">התראות בטלגרם</h3>
+        <label class="field" data-owner-only><span data-i18n="botToken">טוקן הבוט מ־BotFather (רק אתה רואה אותו)</span>
+          <input id="sToken" type="password" autocomplete="off" dir="ltr" placeholder="123456:ABC…"></label>
+        <label class="field"><span data-i18n-html="chatIds">מזהי צ׳אט, מופרדים בפסיק. כל אחד שולח <bdi dir="ltr">/start</bdi> לבוט ומקבל את המספר שלו</span>
+          <input id="sChat" dir="ltr" placeholder="123456789, 987654321"></label>
+        <label class="check"><input id="sAlertReview" type="checkbox"><span data-i18n="alertReview">שלח התראה גם על דירות שחסרים בהן פרטים</span></label>
+        <button type="button" id="testTelegram" class="btn ghost small" data-owner-only data-i18n="testTelegram">שלח הודעת בדיקה</button>
+      </section>
+
+      <section class="group">
+        <h3 data-i18n="groupsAndScan">קבוצות וסריקה</h3>
+        <label class="switch-row"><span><b data-i18n="monitoring">ניטור פעיל</b><small data-i18n="monitoringHint">סורק אוטומטית כל עוד המחשב ער ו־Chrome פתוח</small></span>
+          <input id="sEnabled" type="checkbox" role="switch" class="switch"></label>
+        <label class="field"><span data-i18n="interval">לסרוק כל (דקות, לפחות 10)</span>
           <input id="sInterval" type="number" min="10" max="180" inputmode="numeric"></label>
-        <label class="check big"><input id="sEnabled" type="checkbox"> ניטור פעיל</label>
-      </fieldset>
-      <div class="drawer-actions">
-        <button type="submit" class="btn primary">שמור</button>
-        <button type="button" id="backfill" class="btn ghost">סרוק שוב שבועיים אחורה</button>
-      </div>
-      <p id="settingsStatus" class="settings-status" role="status"></p>
-      <fieldset data-owner-only>
-        <legend>שיתוף הלוח (למשל עם בת הזוג)</legend>
-        <p class="fineprint">היא תראה את אותן דירות, ומה שאחד מכם שומר או מסתיר יופיע אצל שניכם. היא לא תראה את טוקן הבוט. לכל אדם מפתח GitHub משלו, כך שאפשר לבטל לו את הגישה בכל רגע.</p>
-        <div id="members"></div>
-        <label class="field"><span>1. השם שלה</span><input id="mName" maxlength="30" placeholder="למשל: נועה"></label>
-        <p class="fineprint">2. <a id="mTokenLink" href="https://github.com/settings/personal-access-tokens/new?name=Apartment%20Hunter%20-%20partner&target_name=Omerm14&expires_in=none&contents=write" target="_blank" rel="noopener">צור עבורה מפתח GitHub</a> (בחשבון שלך): Only select repositories ← MessiahTLVBOT, ההרשאה Contents כבר מסומנת, Generate token.</p>
-        <label class="field"><span>3. הדבק את המפתח</span><input id="mToken" type="password" autocomplete="off" dir="ltr" placeholder="github_pat_…"></label>
-        <button type="button" id="addMember" class="btn primary small">צור קישור אישי עבורה</button>
-        <p id="shareStatus" class="settings-status" role="status"></p>
-      </fieldset>
-      <fieldset>
-        <legend>פתיחה בטלפון שלך</legend>
-        <p class="fineprint">סרוק עם מצלמת הטלפון. אחרי שהאפליקציה נפתחת: שיתוף ← <b>הוסף למסך הבית</b>. הקישור אישי — אל תשתף אותו.</p>
+        <label class="field"><span data-i18n="groupUrls">קבוצות פייסבוק, קישור אחד בכל שורה</span>
+          <textarea id="sGroups" dir="ltr" rows="6"></textarea></label>
+        <button type="button" id="backfill" class="btn ghost small" data-i18n="backfill">סרוק שוב שבועיים אחורה</button>
+      </section>
+
+      <section class="group" data-owner-only>
+        <h3 data-i18n="shareTitle">שיתוף הלוח</h3>
+        <p class="hint" data-i18n="shareLead">מי שתשתף יראה את אותן דירות, ומה שאחד מכם שומר או מסתיר יופיע אצל כולם. הוא לא יראה את טוקן הבוט. לכל אחד מפתח GitHub משלו, כך שאפשר לבטל גישה בכל רגע.</p>
+        <div id="members" class="members"></div>
+        <label class="field"><span data-i18n="memberName">1. השם של מי שמצטרף</span><input id="mName" maxlength="30" placeholder="למשל: נועה" data-i18n-placeholder="memberNamePlaceholder"></label>
+        <p class="hint"><span data-i18n="memberStep2">2.</span> <a id="mTokenLink" href="https://github.com/settings/personal-access-tokens/new?name=Apartment%20Hunter%20-%20partner&target_name=Omerm14&expires_in=none&contents=write" target="_blank" rel="noopener" data-i18n="memberCreateKey">צור עבורו מפתח GitHub</a> <span data-i18n="memberKeyHow">בחשבון שלך: Only select repositories ← MessiahTLVBOT, ההרשאה Contents כבר מסומנת, Generate token.</span></p>
+        <label class="field"><span data-i18n="memberPaste">3. הדבק את המפתח</span><input id="mToken" type="password" autocomplete="off" dir="ltr" placeholder="github_pat_…"></label>
+        <button type="button" id="addMember" class="btn ghost small" data-i18n="memberCreate">צור קישור אישי</button>
+        <p id="shareStatus" class="status-line" role="status"></p>
+      </section>
+
+      <section class="group">
+        <h3 data-i18n="phoneTitle">פתיחה בטלפון שלך</h3>
+        <p class="hint" data-i18n-html="phoneLead">סרוק עם מצלמת הטלפון. כשהלוח נפתח: שיתוף ← <b>הוסף למסך הבית</b>. הקישור אישי, אל תשתף אותו.</p>
         <div id="qr" class="qr"></div>
-        <button type="button" id="copyLink" class="btn ghost small">העתק קישור אישי</button>
-      </fieldset>
-      <fieldset>
-        <legend>אבחון</legend>
-        <p class="fineprint">מה הסריקה האחרונה מצאה בכל קבוצה. אם משהו לא עובד — לחץ "העתק" ושלח את הטקסט.</p>
+        <button type="button" id="copyLink" class="btn ghost small" data-i18n="copyLink">העתק קישור אישי</button>
+      </section>
+
+      <details class="group diag">
+        <summary><span data-i18n="diagnostics">אבחון</span><svg class="ic"><use href="#i-chevron"/></svg></summary>
+        <p class="hint" data-i18n="diagLead">מה הסריקה האחרונה מצאה בכל קבוצה. אם משהו לא עובד, העתק את הדוח ושלח אותו.</p>
         <pre id="debugView" class="debug"></pre>
-        <button type="button" id="copyDebug" class="btn ghost small">העתק דוח אבחון</button>
-      </fieldset>
-      <p class="fineprint">הסריקה עצמה רצה בתוסף Chrome במחשב שלך (רק כשהוא ער ו־Chrome פתוח). התוסף רק קורא פוסטים בקבוצות שאתה חבר בהן — לא מגיב, לא מפרסם ולא שולח הודעות. הנתונים נשמרים ב־GitHub מוצפנים, והמפתח קיים רק במכשירים שלך.</p>
-      <button type="button" id="logout" class="btn ghost small">התנתק במכשיר הזה</button>
+        <button type="button" id="copyDebug" class="btn ghost small" data-i18n="copyDebug">העתק דוח אבחון</button>
+      </details>
+
+      <p class="hint fine" data-i18n="privacy">הסריקה רצה בתוסף Chrome במחשב שלך. התוסף רק קורא פוסטים בקבוצות שאתה חבר בהן: לא מגיב, לא מפרסם ולא שולח הודעות. הנתונים נשמרים ב־GitHub מוצפנים, והמפתח קיים רק במכשירים שלך.</p>
+      <button type="button" id="logout" class="link-btn danger" data-i18n="logout">התנתק במכשיר הזה</button>
+
+      <div class="drawer-foot">
+        <p id="settingsStatus" class="status-line" role="status"></p>
+        <button type="submit" class="btn primary" data-i18n="save">שמור</button>
+      </div>
     </form>
   </aside>
-  <div id="scrim" class="scrim" hidden></div>
 
   <script src="qrcode.js"></script>
   <script src="default-groups.js"></script>
   <script src="parser.js"></script>
   <script src="sync.js"></script>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -31,16 +31,20 @@ HELP_TEXT = """🏠 Apartment Hunter TLV
 
 
 def format_listing(listing: ParsedListing, listing_id: int) -> str:
+    # Same order as the web app cards: price, rooms and bathrooms, area, extras.
+    price = f"{listing.price:,} ₪ לחודש" if listing.price is not None else "מחיר לא צוין"
+    rooms = f"{listing.rooms:g} חדרים" if listing.rooms is not None else "? חדרים"
+    baths = f"{listing.bathrooms} שירותים" if listing.bathrooms is not None else "? שירותים"
     values = [
-        f"מודעה #{listing_id}",
-        f"מחיר: {listing.price:,} ₪" if listing.price is not None else "מחיר: לא זוהה",
-        f"חדרים: {listing.rooms:g}" if listing.rooms is not None else "חדרים: לא זוהה",
-        f"שירותים: {listing.bathrooms}" if listing.bathrooms is not None else "שירותים: לא זוהה",
-        f"אזור: {listing.neighborhood or 'לא זוהה'}",
-        f"בונוסים: {', '.join(listing.bonuses) if listing.bonuses else 'אין שזוהו'}",
+        price,
+        f"{rooms} · {baths}",
+        listing.neighborhood or "אזור לא זוהה",
     ]
+    if listing.bonuses:
+        values.append(" · ".join(listing.bonuses))
     if listing.url:
-        values.append(f"קישור: {listing.url}")
+        values.append(listing.url)
+    values.append(f"מודעה #{listing_id}")
     return "\n".join(values)
 
 
