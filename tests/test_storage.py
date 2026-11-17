@@ -37,3 +37,29 @@ class StorageTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class UnauthorizedChatTests(unittest.TestCase):
+    def test_stranger_gets_only_their_chat_id(self):
+        import tempfile
+        from pathlib import Path
+        from apartment_hunter.bot import handle_update
+        from apartment_hunter.config import Settings
+
+        class FakeTelegram:
+            def __init__(self):
+                self.sent = []
+
+            def send_message(self, chat_id, text):
+                self.sent.append((chat_id, text))
+
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Settings(token="x", db_path=Path(directory) / "t.db", allowed_chat_ids=frozenset({1}))
+            storage = Storage(settings.db_path)
+            telegram = FakeTelegram()
+            handle_update({"message": {"message_id": 1, "chat": {"id": 55}, "text": "/start"}}, settings, storage, telegram)
+            handle_update({"message": {"message_id": 2, "chat": {"id": 55}, "text": "/stats"}}, settings, storage, telegram)
+            handle_update({"message": {"message_id": 3, "chat": {"id": 55}, "text": "דירה 3 חדרים"}}, settings, storage, telegram)
+            self.assertEqual(len(telegram.sent), 1)
+            self.assertIn("55", telegram.sent[0][1])
+            storage.close()

@@ -6,7 +6,7 @@ const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REFRESH_MS = 60 * 1000;
 
 const DEFAULT_CONFIG = {
-  enabled: false, groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 20, telegramToken: "",
+  enabled: false, groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 20,
   telegramChatId: "", criteria: DEFAULT_CRITERIA, alertOnReview: false, scanRequest: null,
 };
 
@@ -19,8 +19,10 @@ const state = {
   config: DEFAULT_CONFIG,
   configSha: "",
   listingsSha: "",
-  user: {saved: {}, hidden: {}},
-  userSha: "",
+  marks: {items: {}},   // shared saved/hidden marks
+  marksSha: "",
+  secretsFile: {telegramToken: "", members: []}, // owner only
+  secretsSha: "",
   filters: {text: "", price: "", rooms: "", sort: "new", areas: new Set(), bonuses: new Set()},
   openTexts: new Set(),
 };
@@ -58,7 +60,7 @@ function showBanner(text, isError = true) {
 function readSecrets() {
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("t") && hash.get("k")) {
-    const secrets = {token: hash.get("t"), key: hash.get("k")};
+    const secrets = {token: hash.get("t"), key: hash.get("k"), ownerKey: hash.get("o") || "", name: hash.get("n") || ""};
     try { localStorage.setItem("hunter-secrets", JSON.stringify(secrets)); } catch {}
     history.replaceState(null, "", location.pathname);
     return secrets;
@@ -79,7 +81,8 @@ function reparse() {
     const parsed = parseListing(raw.text, raw.url);
     listings[raw.id] = {
       ...raw, ...parsed, url: raw.url || parsed.url, ...evaluate(parsed, criteria),
-      saved: !!state.user.saved[raw.id], hidden: !!state.user.hidden[raw.id],
+      saved: !!state.marks.items[raw.id]?.saved, hidden: !!state.marks.items[raw.id]?.hidden,
+      markedBy: state.marks.items[raw.id]?.by || "",
     };
   }
   state.listings = listings;
@@ -88,10 +91,11 @@ function reparse() {
 async function refresh() {
   const {token, key} = state.secrets;
   try {
-    const [configFile, listingsFile, userFile] = await Promise.all([
+    const [configFile, listingsFile, marksFile, secretsFile] = await Promise.all([
       Sync.readFile(token, Sync.FILES.config),
       Sync.readFile(token, Sync.FILES.listings),
       Sync.readFile(token, Sync.FILES.state),
+      isOwner() ? Sync.readFile(token, Sync.FILES.secrets) : null,
     ]);
     if (configFile && configFile.sha !== state.configSha) {
       state.config = withDefaults(await Sync.decryptJson(key, configFile.text));
@@ -102,9 +106,13 @@ async function refresh() {
       state.raw = state.payload.listings || [];
       state.listingsSha = listingsFile.sha;
     }
-    if (userFile && userFile.sha !== state.userSha && !userWriteTimer) {
-      state.user = {saved: {}, hidden: {}, ...(await Sync.decryptJson(key, userFile.text))};
-      state.userSha = userFile.sha;
+    if (marksFile && marksFile.sha !== state.marksSha) {
+      state.marks = Sync.mergeMarks(state.marks, await Sync.decryptJson(key, marksFile.text));
+      state.marksSha = marksFile.sha;
+    }
+    if (secretsFile && secretsFile.sha !== state.secretsSha) {
+      state.secretsFile = {telegramToken: "", members: [], ...(await Sync.decryptJson(state.secrets.ownerKey, secretsFile.text))};
+      state.secretsSha = secretsFile.sha;
     }
     showBanner("");
   } catch (error) {
@@ -116,18 +124,35 @@ async function refresh() {
   render();
 }
 
-let userWriteTimer = null;
-function saveUserSoon() {
-  clearTimeout(userWriteTimer);
-  userWriteTimer = setTimeout(async () => {
-    try {
-      state.userSha = await Sync.writeEncrypted(state.secrets.token, state.secrets.key, Sync.FILES.state,
-        state.user, "update saved/hidden [skip ci]", state.userSha || undefined);
-    } catch (error) {
-      showBanner(`השמירה נכשלה: ${error.message}`);
+const isOwner = () => !!state.secrets?.ownerKey;
+
+// Save/hide marks are shared: read the latest copy, merge, write; retry on conflicts.
+let marksTimer = null;
+function saveMarksSoon() {
+  clearTimeout(marksTimer);
+  marksTimer = setTimeout(async () => {
+    const {token, key} = state.secrets;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const latest = await Sync.readFile(token, Sync.FILES.state);
+        if (latest) state.marks = Sync.mergeMarks(await Sync.decryptJson(key, latest.text), state.marks);
+        state.marksSha = await Sync.writeFile(token, Sync.FILES.state, await Sync.encryptJson(key, state.marks),
+          "update saved/hidden [skip ci]", latest?.sha);
+        break;
+      } catch (error) {
+        if (attempt === 3) showBanner(`השמירה נכשלה: ${error.message}`);
+      }
     }
-    userWriteTimer = null;
-  }, 1200);
+    reparse();
+    render();
+  }, 800);
+}
+
+async function writeSecrets(patch) {
+  const next = {...state.secretsFile, ...patch};
+  state.secretsSha = await Sync.writeEncrypted(state.secrets.token, state.secrets.ownerKey, Sync.FILES.secrets,
+    next, "update private settings [skip ci]", state.secretsSha || undefined);
+  state.secretsFile = next;
 }
 
 async function writeConfig(config) {
@@ -211,6 +236,7 @@ function card(listing) {
         <p class="excerpt ${open ? "open" : ""}">${esc(listing.text)}</p>
         <button class="more" data-action="toggle-text">${open ? "הצג פחות" : "קרא עוד"}</button>
         ${listing.status !== "match" ? `<p class="reasons">${esc(listing.reasons.join(" · "))}</p>` : ""}
+        ${listing.saved && listing.markedBy ? `<p class="marked">★ נשמרה ע״י ${esc(listing.markedBy)}</p>` : ""}
       </div>
       <div class="foot">
         <span class="source" title="${esc(listing.sourceName)}">${esc(listing.sourceName || "פייסבוק")} · ${esc(listing.postedLabel || timeAgo(listing.firstSeen))}</span>
@@ -264,7 +290,7 @@ function render() {
     ? "אין דירות שמתאימות לסינון הזה."
     : state.payload.scan?.running ? "הסריקה רצה — הדירות יופיעו כאן בהמשך." : "עדיין אין כאן דירות.";
   const c = state.config;
-  const tgDone = !!(c.telegramToken && c.telegramChatId);
+  const tgDone = !isOwner() || !!(state.secretsFile.telegramToken && c.telegramChatId);
   $("onboarding").hidden = tgDone && c.enabled;
   $("stepTg").classList.toggle("done", tgDone);
   $("stepOn").classList.toggle("done", c.enabled);
@@ -288,12 +314,37 @@ function debugReport() {
 }
 
 function personalLink() {
-  return Sync.appLink(state.secrets.token, state.secrets.key);
+  const {token, key, ownerKey, name} = state.secrets;
+  return Sync.appLink(token, key, {ownerKey, name});
+}
+
+function qrSvg(text) {
+  if (!window.qrcode) return "";
+  const qr = window.qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  return qr.createSvgTag({cellSize: 4, margin: 3, scalable: true});
+}
+
+function renderMembers() {
+  const members = state.secretsFile.members || [];
+  $("members").innerHTML = members.length ? members.map((m, i) => `
+    <div class="member">
+      <div><b>${esc(m.name)}</b> <span class="fineprint">· נוסף ${esc(timeAgo(m.at))}</span></div>
+      <div class="member-actions">
+        <button type="button" class="btn ghost small" data-member-copy="${i}">העתק קישור</button>
+        <button type="button" class="btn ghost small" data-member-qr="${i}">ברקוד</button>
+        <button type="button" class="btn ghost small" data-member-remove="${i}">הסר</button>
+      </div>
+      <div class="qr" id="memberQr${i}" hidden></div>
+    </div>`).join("") : `<p class="fineprint">עדיין לא שיתפת את הלוח.</p>`;
 }
 
 function fillSettings() {
   const c = state.config;
-  $("sToken").value = c.telegramToken;
+  $("sToken").value = state.secretsFile.telegramToken || "";
+  document.querySelectorAll("[data-owner-only]").forEach((el) => { el.hidden = !isOwner(); });
+  renderMembers();
   $("sChat").value = c.telegramChatId;
   $("sAlertReview").checked = c.alertOnReview;
   $("sMaxPrice").value = c.criteria.maxPrice;
@@ -338,12 +389,12 @@ function readSettings() {
   if (bad) throw new Error(`קישור לא תקין: ${bad}`);
   const token = $("sToken").value.trim();
   if (token && !/^\d+:[\w-]{20,}$/.test(token)) throw new Error("הטוקן של הבוט לא נראה תקין");
-  const chat = $("sChat").value.trim();
-  if (chat && !/^-?\d+$/.test(chat)) throw new Error("מזהה הצ׳אט צריך להיות מספר");
+  const chat = $("sChat").value.split(/[,\s]+/).filter(Boolean).join(", ");
+  if (chat && !chat.split(", ").every((id) => /^-?\d+$/.test(id))) throw new Error("מזהי צ׳אט צריכים להיות מספרים, מופרדים בפסיק");
   const areas = [...$("sAreas").querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.settingArea);
   return {
     ...state.config,
-    telegramToken: token,
+    telegramToken: token, // removed before saving; stored in the owner-only file
     telegramChatId: chat,
     alertOnReview: $("sAlertReview").checked,
     criteria: {
@@ -368,8 +419,10 @@ async function saveSettings(event) {
     return false;
   }
   setSettingsStatus("שומר…");
+  const {telegramToken, ...publicConfig} = config;
   try {
-    await writeConfig(config);
+    await writeConfig(publicConfig);
+    if (isOwner() && telegramToken !== (state.secretsFile.telegramToken || "")) await writeSecrets({telegramToken});
   } catch (error) {
     setSettingsStatus(`השמירה נכשלה: ${error.message}`, true);
     return false;
@@ -382,12 +435,78 @@ async function saveSettings(event) {
   return true;
 }
 
+// ---------- sharing (owner only) ----------
+
+function tokenLinkFor(name) {
+  const params = new URLSearchParams({
+    name: `Apartment Hunter - ${name}`.slice(0, 40), description: "Shared apartment board",
+    target_name: "Omerm14", expires_in: "none", contents: "write",
+  });
+  return `https://github.com/settings/personal-access-tokens/new?${params}`;
+}
+
+async function addMember() {
+  const name = $("mName").value.trim().slice(0, 30);
+  const token = $("mToken").value.trim();
+  if (!name) return setShareStatus("כתוב שם", true);
+  if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(token)) return setShareStatus("זה לא נראה כמו מפתח GitHub (מתחיל ב־github_pat_)", true);
+  setShareStatus("בודק את המפתח…");
+  try {
+    await Sync.checkToken(token);
+  } catch (error) {
+    return setShareStatus(error.status === 401 ? "המפתח לא תקין" : `למפתח אין הרשאה: ${error.message}`, true);
+  }
+  const link = Sync.appLink(token, state.secrets.key, {name});
+  const members = [...(state.secretsFile.members || []), {name, link, at: Date.now()}];
+  try {
+    await writeSecrets({members});
+  } catch (error) {
+    return setShareStatus(`השמירה נכשלה: ${error.message}`, true);
+  }
+  $("mName").value = "";
+  $("mToken").value = "";
+  renderMembers();
+  const index = members.length - 1;
+  $(`memberQr${index}`).innerHTML = qrSvg(link);
+  $(`memberQr${index}`).hidden = false;
+  await navigator.clipboard.writeText(link).catch(() => {});
+  setShareStatus(`הקישור של ${name} מוכן והועתק. שלח לה אותו (או שתסרוק את הברקוד).`);
+}
+
+async function memberAction(target) {
+  const members = state.secretsFile.members || [];
+  const index = Number(target.dataset.memberCopy ?? target.dataset.memberQr ?? target.dataset.memberRemove);
+  const member = members[index];
+  if (!member) return;
+  if (target.dataset.memberCopy != null) {
+    await navigator.clipboard.writeText(member.link).catch(() => {});
+    return setShareStatus(`הקישור של ${member.name} הועתק.`);
+  }
+  if (target.dataset.memberQr != null) {
+    const box = $(`memberQr${index}`);
+    box.innerHTML = qrSvg(member.link);
+    box.hidden = !box.hidden;
+    return;
+  }
+  if (!confirm(`להסיר את ${member.name}? כדי לחסום את הגישה לגמרי צריך גם למחוק את המפתח שלה ב־GitHub.`)) return;
+  await writeSecrets({members: members.filter((_, i) => i !== index)});
+  renderMembers();
+  setShareStatus(`${member.name} הוסרה מהרשימה. עכשיו מחק את המפתח "Apartment Hunter - ${member.name}" בדף שנפתח.`);
+  window.open("https://github.com/settings/personal-access-tokens", "_blank", "noopener");
+}
+
+function setShareStatus(text, isError = false) {
+  $("shareStatus").textContent = text;
+  $("shareStatus").classList.toggle("err", isError);
+}
+
 // ---------- events ----------
 
 document.addEventListener("click", async (event) => {
   const target = event.target.closest("button, a");
   if (!target) return;
   if (target.matches("[data-open-settings]")) return openSettings();
+  if (target.dataset.memberCopy || target.dataset.memberQr || target.dataset.memberRemove) return memberAction(target);
   if (target.dataset.tab) { state.tab = target.dataset.tab; return render(); }
   if (target.dataset.area || target.dataset.bonus) {
     const set = target.dataset.area ? state.filters.areas : state.filters.bonuses;
@@ -407,12 +526,12 @@ document.addEventListener("click", async (event) => {
     state.openTexts.has(id) ? state.openTexts.delete(id) : state.openTexts.add(id);
     return render();
   }
-  const bucket = action === "save" ? state.user.saved : state.user.hidden;
-  if (bucket[id]) delete bucket[id];
-  else bucket[id] = Date.now();
+  const previous = state.marks.items[id] || {};
+  const field = action === "save" ? "saved" : "hidden";
+  state.marks.items[id] = {...previous, [field]: !previous[field], by: state.secrets.name || "", at: Date.now()};
   reparse();
   render();
-  saveUserSoon();
+  saveMarksSoon();
 });
 
 $("openSettings").addEventListener("click", openSettings);
@@ -429,21 +548,27 @@ $("backfill").addEventListener("click", async () => {
 });
 $("testTelegram").addEventListener("click", async () => {
   const token = $("sToken").value.trim();
-  const chat = $("sChat").value.trim();
-  if (!token || !chat) return setSettingsStatus("מלא קודם טוקן ומזהה צ׳אט", true);
+  const chats = $("sChat").value.split(/[,\s]+/).filter(Boolean);
+  if (!token || !chats.length) return setSettingsStatus("מלא קודם טוקן ומזהה צ׳אט", true);
   setSettingsStatus("שולח…");
   try {
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({chat_id: chat, text: "✅ החיבור עובד! כאן יגיעו התראות על דירות חדשות."}),
-    });
-    const result = await response.json();
-    if (!result.ok) throw new Error(result.description);
-    setSettingsStatus("נשלחה הודעה — בדוק בטלגרם ✓ (אל תשכח ללחוץ שמור)");
+    for (const chat of chats) {
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({chat_id: chat, text: "✅ החיבור עובד! כאן יגיעו התראות על דירות חדשות."}),
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(`${chat}: ${result.description}`);
+    }
+    setSettingsStatus(`נשלחה הודעה ל־${chats.length} צ׳אטים — בדוק בטלגרם ✓ (אל תשכח ללחוץ שמור)`);
   } catch (error) {
     setSettingsStatus(`טלגרם החזיר שגיאה: ${error.message}`, true);
   }
+});
+$("addMember").addEventListener("click", addMember);
+$("mName").addEventListener("input", () => {
+  $("mTokenLink").href = tokenLinkFor($("mName").value.trim() || "partner");
 });
 $("copyLink").addEventListener("click", async () => {
   await navigator.clipboard.writeText(personalLink()).catch(() => {});

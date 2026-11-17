@@ -10,7 +10,7 @@ $("connect").addEventListener("click", async () => {
   $("connect").disabled = true;
   $("status").className = "";
   $("status").textContent = "מתחבר ל־GitHub…";
-  const result = await chrome.runtime.sendMessage({type: "pair", token});
+  const result = await chrome.runtime.sendMessage({type: "pair", token, name: $("name").value.trim()});
   $("connect").disabled = false;
   if (!result?.ok) {
     const reason = /Bad credentials|401/.test(result?.error || "") ? "המפתח לא תקין או שפג תוקפו."

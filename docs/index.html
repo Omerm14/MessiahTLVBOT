@@ -101,11 +101,11 @@
     <form id="settingsForm">
       <fieldset>
         <legend>טלגרם</legend>
-        <label class="field"><span>טוקן הבוט (מ־BotFather)</span>
+        <label class="field" data-owner-only><span>טוקן הבוט (מ־BotFather) — רק אתה רואה אותו</span>
           <input id="sToken" type="password" autocomplete="off" dir="ltr" placeholder="123456:ABC…"></label>
-        <label class="field"><span>מזהה הצ׳אט — שלח <bdi dir="ltr">/id</bdi> לבוט כדי לקבל</span>
-          <input id="sChat" inputmode="numeric" dir="ltr" placeholder="123456789"></label>
-        <button type="button" id="testTelegram" class="btn ghost small">שלח הודעת בדיקה</button>
+        <label class="field"><span>מזהי צ׳אט לקבלת התראות — אפשר כמה, מופרדים בפסיק. כל אחד שולח <bdi dir="ltr">/start</bdi> לבוט ומקבל את המספר שלו</span>
+          <input id="sChat" dir="ltr" placeholder="123456789, 987654321"></label>
+        <button type="button" id="testTelegram" class="btn ghost small" data-owner-only>שלח הודעת בדיקה</button>
         <label class="check"><input id="sAlertReview" type="checkbox"> שלח התראה גם על דירות שחסרים בהן פרטים</label>
       </fieldset>
       <fieldset>
@@ -131,8 +131,18 @@
         <button type="button" id="backfill" class="btn ghost">סרוק שוב שבועיים אחורה</button>
       </div>
       <p id="settingsStatus" class="settings-status" role="status"></p>
+      <fieldset data-owner-only>
+        <legend>שיתוף הלוח (למשל עם בת הזוג)</legend>
+        <p class="fineprint">היא תראה את אותן דירות, ומה שאחד מכם שומר או מסתיר יופיע אצל שניכם. היא לא תראה את טוקן הבוט. לכל אדם מפתח GitHub משלו, כך שאפשר לבטל לו את הגישה בכל רגע.</p>
+        <div id="members"></div>
+        <label class="field"><span>1. השם שלה</span><input id="mName" maxlength="30" placeholder="למשל: נועה"></label>
+        <p class="fineprint">2. <a id="mTokenLink" href="https://github.com/settings/personal-access-tokens/new?name=Apartment%20Hunter%20-%20partner&target_name=Omerm14&expires_in=none&contents=write" target="_blank" rel="noopener">צור עבורה מפתח GitHub</a> (בחשבון שלך): Only select repositories ← MessiahTLVBOT, ההרשאה Contents כבר מסומנת, Generate token.</p>
+        <label class="field"><span>3. הדבק את המפתח</span><input id="mToken" type="password" autocomplete="off" dir="ltr" placeholder="github_pat_…"></label>
+        <button type="button" id="addMember" class="btn primary small">צור קישור אישי עבורה</button>
+        <p id="shareStatus" class="settings-status" role="status"></p>
+      </fieldset>
       <fieldset>
-        <legend>פתיחה בטלפון</legend>
+        <legend>פתיחה בטלפון שלך</legend>
         <p class="fineprint">סרוק עם מצלמת הטלפון. אחרי שהאפליקציה נפתחת: שיתוף ← <b>הוסף למסך הבית</b>. הקישור אישי — אל תשתף אותו.</p>
         <div id="qr" class="qr"></div>
         <button type="button" id="copyLink" class="btn ghost small">העתק קישור אישי</button>

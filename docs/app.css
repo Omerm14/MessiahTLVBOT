@@ -243,3 +243,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   .price { font-size: 22px; }
 }
 .media:has(> .placeholder:not([hidden])) { aspect-ratio: 16 / 6; }
+
+.marked { margin: 0; font-size: 12px; font-weight: 700; color: var(--gold); }
+.member { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.member-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings-status a, .fineprint a { color: var(--accent); }

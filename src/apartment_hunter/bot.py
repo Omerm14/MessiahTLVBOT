@@ -84,7 +84,15 @@ def handle_update(update: dict, settings: Settings, storage: Storage, telegram: 
         return
     chat_id = int(message["chat"]["id"])
     if settings.allowed_chat_ids and chat_id not in settings.allowed_chat_ids:
-        LOGGER.warning("Ignoring unauthorized chat_id=%s", chat_id)
+        # Anyone may learn their own chat ID (to be added for alerts); nothing else.
+        command = (message.get("text") or "").strip().split(maxsplit=1)[0].split("@")[0].lower() if message.get("text") else ""
+        if command in {"/start", "/id"}:
+            telegram.send_message(
+                chat_id,
+                f"👋 המספר שלך: {chat_id}\nשלח אותו למי שמנהל את צייד הדירות כדי לקבל התראות.",
+            )
+        else:
+            LOGGER.warning("Ignoring unauthorized chat_id=%s", chat_id)
         return
     text = (message.get("text") or message.get("caption") or "").strip()
     entities = message.get("entities") or message.get("caption_entities") or []

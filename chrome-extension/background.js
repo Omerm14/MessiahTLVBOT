@@ -8,8 +8,7 @@ const DEFAULT_CONFIG = {
   enabled: false,
   groupUrls: DEFAULT_GROUP_URLS,
   intervalMinutes: 20,
-  telegramToken: "",
-  telegramChatId: "",
+  telegramChatId: "", // one or more chat IDs, comma-separated
   criteria: DEFAULT_CRITERIA,
   alertOnReview: false,
   scanRequest: null,
@@ -31,7 +30,7 @@ async function getConfig() {
 
 async function getMeta() {
   const {meta} = await local("meta");
-  return {backfillDone: false, lastScanRequestAt: 0, configSha: "", listingsSha: "", ...(meta || {})};
+  return {backfillDone: false, lastScanRequestAt: 0, configSha: "", secretsSha: "", listingsSha: "", ...(meta || {})};
 }
 
 async function setMeta(patch) {
@@ -84,6 +83,15 @@ async function pullConfig() {
     await setMeta({configSha: file.sha});
     await schedule();
   }
+  // Owner-only secrets (the Telegram bot token), unlocked by the owner key.
+  const secretsFile = await Sync.readFile(pairing.githubToken, Sync.FILES.secrets).catch(() => null);
+  if (secretsFile && secretsFile.sha !== (await getMeta()).secretsSha) {
+    const secrets = await Sync.decryptJson(pairing.ownerKey, secretsFile.text).catch(() => null);
+    if (secrets) {
+      await chrome.storage.local.set({secrets});
+      await setMeta({secretsSha: secretsFile.sha});
+    }
+  }
   return getConfig();
 }
 
@@ -134,14 +142,20 @@ async function schedule() {
 // ---------- Telegram ----------
 
 async function telegram(config, text) {
-  if (!config.telegramToken || !config.telegramChatId) return false;
-  const response = await fetch(`https://api.telegram.org/bot${config.telegramToken}/sendMessage`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({chat_id: config.telegramChatId, text, disable_web_page_preview: true}),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!result.ok) throw new Error(result.description || `Telegram error ${response.status}`);
+  const {secrets} = await local("secrets");
+  const chats = String(config.telegramChatId || "").split(/[,\s]+/).filter((id) => /^-?\d+$/.test(id));
+  if (!secrets?.telegramToken || !chats.length) return false;
+  let lastError = null;
+  for (const chat of chats) {
+    const response = await fetch(`https://api.telegram.org/bot${secrets.telegramToken}/sendMessage`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({chat_id: chat, text, disable_web_page_preview: true}),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!result.ok) lastError = new Error(result.description || `Telegram error ${response.status}`);
+  }
+  if (lastError) throw lastError;
   return true;
 }
 
@@ -435,9 +449,13 @@ async function startScan(requested) {
 
 // ---------- Events ----------
 
+function ownerLink(pairing) {
+  return Sync.appLink(pairing.githubToken, pairing.key, {ownerKey: pairing.ownerKey, name: pairing.name});
+}
+
 async function openApp() {
   const pairing = await getPairing();
-  chrome.tabs.create({url: pairing ? Sync.appLink(pairing.githubToken, pairing.key) : chrome.runtime.getURL("pair.html")});
+  chrome.tabs.create({url: pairing ? ownerLink(pairing) : chrome.runtime.getURL("pair.html")});
 }
 
 async function watchdog() {
@@ -489,6 +507,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const pages = await Sync.enablePages(token);
       const existing = await getPairing();
       const key = existing?.key || await Sync.newKey();
+      const ownerKey = existing?.ownerKey || await Sync.newKey();
+      const name = String(message.name || existing?.name || "").trim().slice(0, 30);
       let configFile = null;
       try {
         configFile = await Sync.readEncrypted(token, key, Sync.FILES.config);
@@ -496,14 +516,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (!configFile) {
         await Sync.writeEncrypted(token, key, Sync.FILES.config, DEFAULT_CONFIG, "create settings [skip ci]");
       }
-      await chrome.storage.local.set({pairing: {githubToken: token, key}, meta: {}});
+      const pairing = {githubToken: token, key, ownerKey, name};
+      await chrome.storage.local.set({pairing, meta: {}});
       await pullConfig();
       await pushListings();
-      return {ok: true, link: Sync.appLink(token, key), pages};
+      return {ok: true, link: ownerLink(pairing), pages};
     }
     if (message?.type === "status") {
       const {pairing, scan, syncError} = await local(["pairing", "scan", "syncError"]);
-      return {ok: true, paired: !!pairing, link: pairing ? Sync.appLink(pairing.githubToken, pairing.key) : "", scan, syncError};
+      return {ok: true, paired: !!pairing, link: pairing ? ownerLink(pairing) : "", scan, syncError};
     }
     return {ok: false};
   })().then(sendResponse, (error) => sendResponse({ok: false, error: String(error.message || error)}));

@@ -161,16 +161,33 @@
     }
   }
 
-  function appLink(token, keyText) {
-    return `${APP_URL}#t=${encodeURIComponent(token)}&k=${encodeURIComponent(keyText)}`;
+  // Personal link. ownerKey (only in the owner's link) unlocks owner-only secrets
+  // such as the Telegram bot token; name labels who saved/hid what.
+  function appLink(token, keyText, {ownerKey = "", name = ""} = {}) {
+    const params = new URLSearchParams({t: token, k: keyText});
+    if (ownerKey) params.set("o", ownerKey);
+    if (name) params.set("n", name);
+    return `${APP_URL}#${params.toString()}`;
   }
 
-  const FILES = {config: "data/config.enc", listings: "data/listings.enc", state: "data/state.enc"};
+  // Shared saved/hidden marks: {items: {id: {saved, hidden, by, at}}}.
+  // Merging keeps the newest change per apartment, so two people can edit at once.
+  function mergeMarks(a, b) {
+    const items = {...(a?.items || {})};
+    for (const [id, mark] of Object.entries(b?.items || {})) {
+      if (!items[id] || (mark.at || 0) > (items[id].at || 0)) items[id] = mark;
+    }
+    return {items};
+  }
+
+  const FILES = {
+    config: "data/config.enc", listings: "data/listings.enc", state: "data/state.enc", secrets: "data/secrets.enc",
+  };
 
   const api = {
     REPO, DATA_BRANCH, APP_URL, FILES, GitHubError,
     newKey, encryptJson, decryptJson, checkToken, ensureDataBranch,
-    readFile, writeFile, readEncrypted, writeEncrypted, enablePages, appLink,
+    readFile, writeFile, readEncrypted, writeEncrypted, enablePages, appLink, mergeMarks,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.HunterSync = api;
