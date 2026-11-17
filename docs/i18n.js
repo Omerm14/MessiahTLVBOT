@@ -5,10 +5,10 @@
 (function (root) {
   const STRINGS = {
     he: {
-      appName: "Messiah TLV Apartment Hunter",
+      appName: "Messiah",
       loading: "טוען…",
       gateLead: "כדי לפתוח את הלוח צריך קישור אישי.",
-      gateDesktop: "<b>במחשב:</b> לחץ על אייקון Messiah TLV בסרגל של Chrome.",
+      gateDesktop: "<b>במחשב:</b> לחץ על אייקון Messiah בסרגל של Chrome.",
       gatePhone: "<b>בטלפון:</b> פתח את הלוח במחשב, עבור אל <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.",
       settings: "הגדרות", stop: "עצור", scanNow: "סרוק עכשיו", close: "סגור", save: "שמור",
       onbTitle: "עוד שני צעדים והלוח מתחיל להתמלא",
@@ -95,10 +95,10 @@
       langButton: "EN", langAria: "Switch to English", langGate: "English",
     },
     en: {
-      appName: "Messiah TLV Apartment Hunter",
+      appName: "Messiah",
       loading: "Loading…",
       gateLead: "You need your personal link to open the board.",
-      gateDesktop: "<b>On your computer:</b> click the Messiah TLV icon in the Chrome toolbar.",
+      gateDesktop: "<b>On your computer:</b> click the Messiah icon in the Chrome toolbar.",
       gatePhone: "<b>On your phone:</b> open the board on your computer, go to <b>Settings → Open on your phone</b> and scan the QR code.",
       settings: "Settings", stop: "Stop", scanNow: "Scan now", close: "Close", save: "Save",
       onbTitle: "Two more steps and the board starts filling up",

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Messiah TLV Apartment Hunter",
+  "name": "Messiah",
   "version": "0.7.0",
   "description": "סורק קבוצות דירות בפייסבוק, שולח התראות לטלגרם ומסנכרן לאפליקציית הדירות. קריאה בלבד.",
   "permissions": [
@@ -22,7 +22,7 @@
   },
   "options_page": "pair.html",
   "action": {
-    "default_title": "Messiah TLV Apartment Hunter",
+    "default_title": "Messiah",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

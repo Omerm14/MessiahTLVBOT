@@ -1,6 +1,6 @@
 {
-  "name": "Messiah TLV Apartment Hunter",
-  "short_name": "Apartment Hunter",
+  "name": "Messiah",
+  "short_name": "Messiah",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

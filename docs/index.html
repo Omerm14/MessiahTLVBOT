@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Messiah TLV Apartment Hunter</title>
+  <title>Messiah</title>
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Apartment Hunter">
+  <meta name="apple-mobile-web-app-title" content="Messiah">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
@@ -19,6 +19,7 @@
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 100 100"><path d="M22 74V44L36 30l14 14 14-14 14 14v30" style="fill:none;stroke-width:9"/><rect x="44" y="58" width="12" height="16" rx="2" style="fill:currentColor;stroke:none"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-10.6A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 8 2.6c0 5.7-8 10.6-8 10.6z"/></symbol>
     <symbol id="i-hide" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.9 3.7M6.3 6.3A17 17 0 0 0 2.5 12S6 19 12 19a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
@@ -37,12 +38,12 @@
   <section id="gate" class="gate" hidden>
     <div class="gate-inner">
       <div class="gate-brand">
-        <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-home"/></svg></span>
-        <h1 data-i18n="appName">Messiah TLV Apartment Hunter</h1>
+        <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-logo"/></svg></span>
+        <h1 data-i18n="appName">Messiah</h1>
       </div>
       <p data-i18n="gateLead">כדי לפתוח את הלוח צריך קישור אישי.</p>
       <ul class="gate-steps">
-        <li data-i18n-html="gateDesktop"><b>במחשב:</b> לחץ על אייקון Messiah TLV בסרגל של Chrome.</li>
+        <li data-i18n-html="gateDesktop"><b>במחשב:</b> לחץ על אייקון Messiah בסרגל של Chrome.</li>
         <li data-i18n-html="gatePhone"><b>בטלפון:</b> פתח את הלוח במחשב, עבור אל <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.</li>
       </ul>
       <button type="button" class="btn ghost small lang-toggle" data-lang-toggle>English</button>
@@ -53,9 +54,9 @@
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-home"/></svg></span>
+          <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-logo"/></svg></span>
           <div class="brand-text">
-            <h1 data-i18n="appName">Messiah TLV Apartment Hunter</h1>
+            <h1 data-i18n="appName">Messiah</h1>
             <p id="scanStatus" class="scan-status" role="status" aria-live="polite"><span class="dot"></span><span data-i18n="loading">טוען…</span></p>
           </div>
         </div>

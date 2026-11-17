@@ -10,7 +10,7 @@ const areaName = (name) => (lang === "en" ? AREAS_EN[name] || name : name);
 
 const STRINGS = {
   he: {
-    appName: "Messiah TLV Apartment Hunter", newMatches: "התאמות היום", today: "פוסטים היום", groups: "קבוצות",
+    appName: "Messiah", newMatches: "התאמות היום", today: "פוסטים היום", groups: "קבוצות",
     latestMatch: "ההתאמה האחרונה", openBoard: "פתח את הלוח", scanNow: "סרוק עכשיו", stop: "עצור",
     notPaired: "התוסף עוד לא מחובר. חיבור חד־פעמי לוקח דקה.", connect: "חבר את התוסף", lang: "EN",
     scanning: (i, n) => `סורק · קבוצה ${i} מתוך ${n}`, last: (ago) => `סריקה אחרונה ${ago}`,
@@ -18,7 +18,7 @@ const STRINGS = {
     ago: (m) => m < 1 ? "עכשיו" : m < 60 ? `לפני ${m} דק׳` : m < 1440 ? `לפני ${Math.round(m / 60)} שע׳` : `לפני ${Math.round(m / 1440)} ימים`,
   },
   en: {
-    appName: "Messiah TLV Apartment Hunter", newMatches: "Matches today", today: "Posts today", groups: "Groups",
+    appName: "Messiah", newMatches: "Matches today", today: "Posts today", groups: "Groups",
     latestMatch: "Latest match", openBoard: "Open board", scanNow: "Scan now", stop: "Stop",
     notPaired: "The extension isn't connected yet. The one-time setup takes a minute.", connect: "Connect", lang: "עב",
     scanning: (i, n) => `Scanning · group ${i} of ${n}`, last: (ago) => `Last scan ${ago}`,

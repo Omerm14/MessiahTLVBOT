@@ -1,4 +1,4 @@
-# Messiah TLV Apartment Hunter
+<p align="center"><img src="docs/logo.svg" alt="Messiah" width="260"></p>
 
 MVP חינמי שמנטר מהמחשב האישי קבוצות Facebook שנבחרו, מסנן מודעות ושולח התאמות ל־Telegram. אפשר גם להעביר לבוט הודעות וקישורים באופן ידני.
 
