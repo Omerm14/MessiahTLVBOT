@@ -6,12 +6,8 @@ compatibility_date = "2026-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "messiah"
-# Filled in after `wrangler d1 create messiah` (see SETUP.md).
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7604a501-6930-4857-bb26-f689e0141eed"
 migrations_dir = "migrations"
 
-[vars]
-# Your Cloudflare Access team domain and the application's audience tag (SETUP.md).
-ACCESS_TEAM_DOMAIN = ""
-ACCESS_AUD = ""
-OWNER_EMAIL = ""
+# OWNER_EMAIL, ACCESS_TEAM_DOMAIN and ACCESS_AUD are Pages secrets (wrangler pages secret put),
+# so personal details stay out of this public repository.
