@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>חיבור צייד הדירות</title>
+  <style>
+    :root { --bg:#f4f1ec; --surface:#fff; --ink:#1d2433; --muted:#687083; --line:#e4ded4; --accent:#0f6e63; --accent-soft:#e2f1ee; --warm:#e2683c; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#12161d; --surface:#1b212b; --ink:#e8ebf1; --muted:#9aa3b4; --line:#2b3340; --accent:#3cb7a6; --accent-soft:#183632; --warm:#f08a62; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:620px; margin:48px auto; padding:0 16px; }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:28px; }
+    h1 { margin:0 0 6px; font-size:24px; }
+    p.lead { color:var(--muted); margin:0 0 20px; }
+    ol { padding-inline-start:22px; margin:0 0 20px; }
+    li { margin:10px 0; }
+    a { color:var(--accent); font-weight:600; }
+    input { width:100%; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:inherit; font:14px ui-monospace,Menlo,monospace; direction:ltr; }
+    button { margin-top:14px; width:100%; padding:13px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; font-size:16px; cursor:pointer; }
+    button:disabled { opacity:.6; }
+    #status { margin-top:14px; font-weight:600; min-height:1.6em; }
+    #status.err { color:var(--warm); }
+    .hint { font-size:13px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <h1>חיבור חד־פעמי</h1>
+      <p class="lead">התוסף סורק את קבוצות הפייסבוק ושומר את הדירות (מוצפנות) ב־GitHub, כדי שתוכל לראות אותן באפליקציה מכל מכשיר.</p>
+      <ol>
+        <li><a id="tokenLink" href="https://github.com/settings/personal-access-tokens/new?name=Apartment%20Hunter&description=Chrome%20extension%20sync&target_name=Omerm14&expires_in=none&contents=write&pages=write" target="_blank" rel="noopener">לחץ כאן ליצירת מפתח ב־GitHub</a>.
+          <div class="hint">ב־"Repository access" בחר <b>Only select repositories</b> ← <b>MessiahTLVBOT</b>. ההרשאות כבר מסומנות (Contents ו־Pages: Read and write). גלול למטה ולחץ <b>Generate token</b>.</div></li>
+        <li>העתק את המפתח (מתחיל ב־<bdi dir="ltr">github_pat_</bdi>) והדבק כאן:</li>
+      </ol>
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
+      <button id="connect">חבר</button>
+      <p id="status" role="status"></p>
+    </div>
+  </main>
+  <script src="pair.js"></script>
+</body>
+</html>

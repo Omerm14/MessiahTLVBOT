@@ -1,7 +1,9 @@
-importScripts("default-groups.js", "parser.js");
+importScripts("default-groups.js", "parser.js", "sync.js");
 
 const {parseListing, evaluate, DEFAULT_CRITERIA} = self.ApartmentParser;
+const Sync = self.HunterSync;
 
+// Settings are edited in the web app and synced from the repository.
 const DEFAULT_CONFIG = {
   enabled: false,
   groupUrls: DEFAULT_GROUP_URLS,
@@ -10,20 +12,34 @@ const DEFAULT_CONFIG = {
   telegramChatId: "",
   criteria: DEFAULT_CRITERIA,
   alertOnReview: false,
-  backfillDone: false,
+  scanRequest: null,
 };
-
-const ROUNDS = {quick: 5, backfill: 45};
 const MAX_ALERTS_FROM_BACKFILL = 15;
+const KEEP_DAYS = 45;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// ---------- local state ----------
+
+async function local(keys) {
+  return chrome.storage.local.get(keys);
+}
+
 async function getConfig() {
-  const {config} = await chrome.storage.local.get("config");
+  const {config} = await local("config");
   return {...DEFAULT_CONFIG, ...(config || {}), criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})}};
 }
 
+async function getMeta() {
+  const {meta} = await local("meta");
+  return {backfillDone: false, lastScanRequestAt: 0, configSha: "", listingsSha: "", ...(meta || {})};
+}
+
+async function setMeta(patch) {
+  await chrome.storage.local.set({meta: {...(await getMeta()), ...patch}});
+}
+
 async function getScan() {
-  const {scan} = await chrome.storage.local.get("scan");
+  const {scan} = await local("scan");
   return scan || {running: false};
 }
 
@@ -31,6 +47,79 @@ async function setScan(patch) {
   const scan = {...(await getScan()), ...patch};
   await chrome.storage.local.set({scan});
   return scan;
+}
+
+async function getPairing() {
+  const {pairing} = await local("pairing");
+  return pairing || null;
+}
+
+// Scanning rules come from the web app so Facebook layout changes can be fixed
+// without reinstalling. The packaged copy is the fallback.
+async function getRules() {
+  try {
+    const response = await fetch(`${Sync.APP_URL}rules.json?t=${Date.now()}`, {cache: "no-store"});
+    if (response.ok) {
+      const rules = await response.json();
+      await chrome.storage.local.set({rules});
+      return rules;
+    }
+  } catch {}
+  const {rules} = await local("rules");
+  if (rules) return rules;
+  return (await fetch(chrome.runtime.getURL("rules.json"))).json();
+}
+
+// ---------- sync with the web app ----------
+
+async function pullConfig() {
+  const pairing = await getPairing();
+  if (!pairing) return null;
+  const file = await Sync.readFile(pairing.githubToken, Sync.FILES.config);
+  if (!file) return null;
+  const meta = await getMeta();
+  if (file.sha !== meta.configSha) {
+    const config = await Sync.decryptJson(pairing.key, file.text);
+    await chrome.storage.local.set({config});
+    await setMeta({configSha: file.sha});
+    await schedule();
+  }
+  return getConfig();
+}
+
+let pushing = Promise.resolve();
+function pushListings() {
+  pushing = pushing.then(doPushListings, doPushListings);
+  return pushing;
+}
+
+async function doPushListings() {
+  const pairing = await getPairing();
+  if (!pairing) return;
+  const {listings = {}, debug = {}, scan = {}} = await local(["listings", "debug", "scan"]);
+  const cutoff = Date.now() - KEEP_DAYS * 86400000;
+  const kept = Object.values(listings).filter((l) => (l.lastSeen || l.firstSeen) >= cutoff);
+  const {pendingAlerts, tabId, windowId, ...scanStatus} = scan;
+  const payload = {
+    updatedAt: Date.now(),
+    version: chrome.runtime.getManifest().version,
+    scan: scanStatus,
+    debug,
+    listings: kept.map((l) => ({
+      id: l.id, text: l.text.slice(0, 3000), url: l.url, author: l.author, image: l.image,
+      postedLabel: l.postedLabel, source: l.source, sourceName: l.sourceName,
+      firstSeen: l.firstSeen, lastSeen: l.lastSeen, fromBackfill: l.fromBackfill,
+    })),
+  };
+  const meta = await getMeta();
+  try {
+    const sha = await Sync.writeEncrypted(pairing.githubToken, pairing.key, Sync.FILES.listings, payload,
+      `update listings (${kept.length}) [skip ci]`, meta.listingsSha || undefined);
+    await setMeta({listingsSha: sha});
+    await chrome.storage.local.set({syncError: ""});
+  } catch (error) {
+    await chrome.storage.local.set({syncError: `GitHub: ${error.message}`});
+  }
 }
 
 async function schedule() {
@@ -64,59 +153,50 @@ function formatAlert(listing, title) {
   if (listing.bonuses.length) lines.push(`✨ ${listing.bonuses.join(", ")}`);
   lines.push("", listing.text.slice(0, 350) + (listing.text.length > 350 ? "…" : ""));
   lines.push("", `🔗 ${listing.url || listing.source}`);
+  lines.push(`📋 כל הדירות: ${Sync.APP_URL}`);
   return lines.join("\n");
 }
 
 // ---------- Facebook page script (runs inside the group tab) ----------
-
-// Facebook's markup changes often, so this tries several layouts:
-// - group feed units: children of [role="feed"] or elements with aria-posinset
-//   (top-level posts usually have NO role="article"; comments do)
-// - post body: data-ad-rendering-role="story_message" / data-ad-preview="message",
-//   else the unit's text with comments and toolbar lines removed
-// - permalinks are hidden behind "#" until hovered, so we hover the header links.
-async function collectFromPage() {
-  if (document.querySelector('input[name="email"], form[action*="login"]') && !document.querySelector('[role="feed"]')) {
+// Every selector and pattern comes from rules.json (see getRules).
+async function collectFromPage(rules) {
+  const re = (source) => new RegExp(source, "i");
+  if (document.querySelector(rules.loginSelector) && !document.querySelector(rules.feedSelector)) {
     return {loggedOut: true, posts: []};
   }
-  const COMMENT_LABEL = /^(comment|reply|תגובה|תשובה|השב)/i;
+  const COMMENT_LABEL = re(rules.commentLabel);
   const isComment = (el) => {
-    const art = el.closest('[role="article"]');
+    const art = el.closest(rules.articleSelector);
     return !!art && COMMENT_LABEL.test(art.getAttribute("aria-label") || "");
   };
-  const UI_LINE = /^(like|comment|share|send|reply|follow|join|see more|see less|see translation|all reactions:?|most relevant|write a (comment|public comment)…?|לייק|אהבתי|תגובה|תגובות|שיתוף|שתף|שליחה|השב|הצטרפות|ראה עוד|הצג עוד|הצג פחות|ראה תרגום|עוד|כל התגובות|כתיבת תגובה.*|כתוב תגובה.*|הכי רלוונטי|\d+\s*(comments?|shares?|תגובות|שיתופים)|·|\d+[smhdwy]|\d+\s*(ש׳|ד׳|י׳|דק׳))$/i;
-
-  // Expand truncated posts.
-  const seeMore = /^(see more|ראה עוד|הצג עוד|עוד)$/i;
+  const UI_LINE = re(rules.uiLine);
+  const seeMore = re(rules.seeMore);
   document.querySelectorAll('[role="button"]').forEach((button) => {
     if (seeMore.test((button.innerText || "").trim()) && !isComment(button)) button.click();
   });
 
-  // Find post units.
   const units = new Set();
-  document.querySelectorAll('[role="feed"] > div, [aria-posinset]').forEach((el) => units.add(el));
-  document.querySelectorAll('[role="article"]').forEach((el) => {
-    if (!COMMENT_LABEL.test(el.getAttribute("aria-label") || "") && !el.parentElement?.closest('[role="article"]')) units.add(el);
+  document.querySelectorAll(rules.unitSelector).forEach((el) => units.add(el));
+  document.querySelectorAll(rules.articleSelector).forEach((el) => {
+    if (!COMMENT_LABEL.test(el.getAttribute("aria-label") || "") && !el.parentElement?.closest(rules.articleSelector)) units.add(el);
   });
-  // Drop units nested inside other units.
   const list = [...units].filter((el) => ![...units].some((other) => other !== el && other.contains(el)));
 
-  // Reveal real permalinks (Facebook fills the href on hover/focus).
   for (const unit of list) {
-    unit.querySelectorAll('a[href="#"], a[href*="__cft__"], a[role="link"]:not([href*="/user/"])').forEach((a, i) => {
+    unit.querySelectorAll(rules.hoverLinks).forEach((a, i) => {
       if (i > 12 || isComment(a)) return;
       for (const type of ["mouseover", "mouseenter", "focus", "focusin"]) a.dispatchEvent(new Event(type, {bubbles: true}));
     });
   }
   await new Promise((resolve) => setTimeout(resolve, 400));
 
-  const PERMALINK = /facebook\.com\/(?:groups\/[^/]+\/(?:posts|permalink)\/\d+|permalink\.php|story\.php|\d+\/posts\/|.*[?&](?:story_fbid|multi_permalinks)=)/i;
+  const PERMALINK = re(rules.permalink);
+  const DETAIL = re(rules.detailLine);
+  const IMAGE = re(rules.imageSrc);
   const posts = [];
   const stats = {units: list.length, withMessageNode: 0, withPermalink: 0};
   for (const unit of list) {
-    const messageNodes = [...unit.querySelectorAll(
-      '[data-ad-rendering-role="story_message"], [data-ad-comet-preview="message"], [data-ad-preview="message"]'
-    )].filter((el) => !isComment(el));
+    const messageNodes = [...unit.querySelectorAll(rules.messageSelector)].filter((el) => !isComment(el));
     let text = "";
     if (messageNodes.length) {
       stats.withMessageNode++;
@@ -124,8 +204,8 @@ async function collectFromPage() {
     }
     // Attachments (e.g. "for rent" listings) keep price/rooms outside the message.
     const clone = unit.cloneNode(true);
-    clone.querySelectorAll('[role="article"], ul, form, [role="textbox"], [role="toolbar"], h2, h3, h4, svg').forEach((el) => {
-      if (el.matches('[role="article"]') && !COMMENT_LABEL.test(el.getAttribute("aria-label") || "")) return;
+    clone.querySelectorAll(rules.removeInCopy).forEach((el) => {
+      if (el.matches(rules.articleSelector) && !COMMENT_LABEL.test(el.getAttribute("aria-label") || "")) return;
       el.remove();
     });
     // innerText needs layout to keep line breaks, so render the copy off-screen briefly.
@@ -142,21 +222,19 @@ async function collectFromPage() {
       .join("\n");
     if (!text) text = fullText;
     else if (fullText.length > text.length) {
-      const extra = fullText.split("\n").filter((line) => !text.includes(line) && /\d|₪|חדר|bed|bath|שירות/i.test(line));
+      const extra = fullText.split("\n").filter((line) => !text.includes(line) && DETAIL.test(line));
       if (extra.length) text += "\n" + extra.join("\n");
     }
     text = text.trim();
-    if (text.length < 25) continue;
+    if (text.length < rules.minTextLength) continue;
 
     const anchors = [...unit.querySelectorAll("a[href]")].filter((a) => !isComment(a));
     const permalink = anchors.find((a) => PERMALINK.test(a.href));
     if (permalink) stats.withPermalink++;
-    const author = (unit.querySelector('[data-ad-rendering-role="profile_name"], h2, h3, h4, strong')?.innerText || "").split("\n")[0].trim();
+    const author = (unit.querySelector(rules.authorSelector)?.innerText || "").split("\n")[0].trim();
     const image = [...unit.querySelectorAll("img")].find((img) =>
-      !isComment(img) && /scontent|fbcdn/.test(img.src) && (img.naturalWidth || img.width) >= 160);
-    const timeLabel = permalink
-      ? (permalink.innerText || permalink.getAttribute("aria-label") || "").trim()
-      : "";
+      !isComment(img) && IMAGE.test(img.src) && (img.naturalWidth || img.width) >= rules.minImageWidth);
+    const timeLabel = permalink ? (permalink.innerText || permalink.getAttribute("aria-label") || "").trim() : "";
     posts.push({
       text: text.slice(0, 6000),
       url: permalink ? permalink.href : "",
@@ -167,8 +245,7 @@ async function collectFromPage() {
   }
   window.scrollBy(0, Math.max(900, window.innerHeight * 0.9));
   const groupName = (document.querySelector("h1")?.innerText || document.title || "").trim().slice(0, 100);
-  const samples = posts.slice(0, 3).map((p) => p.text.slice(0, 160));
-  return {loggedOut: false, posts, groupName, stats, samples};
+  return {loggedOut: false, posts, groupName, stats, samples: posts.slice(0, 3).map((p) => p.text.slice(0, 160))};
 }
 
 // ---------- Scanning ----------
@@ -212,11 +289,11 @@ function idFor(textKey) {
   return `p${hash.toString(36)}${textKey.length.toString(36)}`;
 }
 
-async function scanGroup(groupUrl, mode) {
+async function scanGroup(groupUrl, mode, rules) {
   const scan = await getScan();
   const tabId = await ensureWindow(scan);
   const url = new URL(groupUrl);
-  url.searchParams.set("sorting_setting", "CHRONOLOGICAL");
+  if (rules.chronologicalParam) url.searchParams.set(...rules.chronologicalParam);
   await chrome.tabs.update(tabId, {url: url.toString()});
   await waitForLoad(tabId);
 
@@ -224,14 +301,15 @@ async function scanGroup(groupUrl, mode) {
   let groupName = "";
   let lastDebug = null;
   let idleRounds = 0;
-  for (let round = 0; round < ROUNDS[mode]; round++) {
+  const rounds = rules.rounds?.[mode] || (mode === "backfill" ? 45 : 5);
+  for (let round = 0; round < rounds; round++) {
     if (!(await getScan()).running) throw new Error("STOPPED");
-    const [result] = await chrome.scripting.executeScript({target: {tabId}, func: collectFromPage});
+    const [result] = await chrome.scripting.executeScript({target: {tabId}, func: collectFromPage, args: [rules]});
     const data = result?.result || {posts: []};
     if (data.loggedOut) throw new Error("NOT_LOGGED_IN");
     groupName = data.groupName || groupName;
     if (round === 0 || data.posts.length) {
-      lastDebug = {group: groupUrl, title: groupName, round, ...(data.stats || {}), posts: data.posts.length, samples: data.samples || []};
+      lastDebug = {title: groupName, round, ...(data.stats || {}), posts: data.posts.length, samples: data.samples || []};
     }
     const before = found.size;
     for (const post of data.posts) {
@@ -243,14 +321,14 @@ async function scanGroup(groupUrl, mode) {
     await setScan({heartbeat: Date.now(), round: round + 1});
     await sleep(1800 + Math.random() * 1200);
   }
-  const {debug = {}} = await chrome.storage.local.get("debug");
+  const {debug = {}} = await local("debug");
   debug[groupUrl] = {...lastDebug, unique: found.size, at: Date.now()};
   await chrome.storage.local.set({debug});
   return {posts: [...found.values()], groupName};
 }
 
 async function storePosts(posts, groupUrl, groupName, mode, config) {
-  const {listings = {}} = await chrome.storage.local.get("listings");
+  const {listings = {}} = await local("listings");
   const fresh = [];
   for (const post of posts) {
     const parsed = parseListing(post.text, post.url);
@@ -261,16 +339,13 @@ async function storePosts(posts, groupUrl, groupName, mode, config) {
       listings[id].lastSeen = Date.now();
       continue;
     }
-    const {status, reasons} = evaluate(parsed, config.criteria);
     const listing = {
-      id, ...parsed, text: post.text, author: post.author, image: post.image,
+      id, text: post.text, url: parsed.url, author: post.author, image: post.image,
       postedLabel: post.postedLabel, source: groupUrl, sourceName: groupName,
       firstSeen: Date.now(), lastSeen: Date.now(), fromBackfill: mode === "backfill",
-      status, reasons, saved: false, hidden: false,
     };
-    delete listing.textKey;
     listings[id] = listing;
-    fresh.push(listing);
+    fresh.push({...listing, ...parsed, ...evaluate(parsed, config.criteria)});
   }
   await chrome.storage.local.set({listings});
   return fresh;
@@ -280,11 +355,13 @@ async function runScan(mode, resume = false) {
   const config = await getConfig();
   let scan = await getScan();
   if (scan.running && !resume) return;
+  const rules = await getRules();
   if (!resume) {
     scan = await setScan({
       running: true, mode, groupIndex: 0, total: config.groupUrls.length, startedAt: Date.now(),
-      heartbeat: Date.now(), counts: {posts: 0, new: 0, matches: 0}, pendingAlerts: [], lastError: "",
+      heartbeat: Date.now(), counts: {posts: 0, new: 0, matches: 0}, pendingAlerts: [], lastError: "", currentGroup: "",
     });
+    pushListings();
   }
   try {
     for (let index = scan.groupIndex; index < config.groupUrls.length; index++) {
@@ -292,7 +369,7 @@ async function runScan(mode, resume = false) {
       await setScan({groupIndex: index, currentGroup: groupUrl, heartbeat: Date.now(), round: 0});
       let fresh = [];
       try {
-        const {posts, groupName} = await scanGroup(groupUrl, scan.mode);
+        const {posts, groupName} = await scanGroup(groupUrl, scan.mode, rules);
         fresh = await storePosts(posts, groupUrl, groupName, scan.mode, config);
         const state = await getScan();
         const counts = {...state.counts};
@@ -307,7 +384,7 @@ async function runScan(mode, resume = false) {
       const alertable = fresh.filter((l) => l.status === "match" || (config.alertOnReview && l.status === "review"));
       if (scan.mode === "backfill") {
         const state = await getScan();
-        await setScan({pendingAlerts: [...state.pendingAlerts, ...alertable.map((l) => l.id)]});
+        await setScan({pendingAlerts: [...(state.pendingAlerts || []), ...alertable.map((l) => l.id)]});
       } else {
         for (const listing of alertable) {
           await telegram(config, formatAlert(listing, listing.status === "match" ? "🚨 דירה חדשה שמתאימה לך!" : "🟡 דירה חדשה לבדיקה"))
@@ -315,6 +392,7 @@ async function runScan(mode, resume = false) {
         }
       }
       await setScan({groupIndex: index + 1});
+      if ((index + 1) % 5 === 0) pushListings();
       await sleep(3000 + Math.random() * 3000);
     }
     const state = await getScan();
@@ -329,16 +407,18 @@ async function runScan(mode, resume = false) {
     await setScan({running: false, lastError: message, lastRun: Date.now()});
   } finally {
     await closeWindow();
+    await pushListings();
   }
 }
 
 async function finishBackfill(config, state) {
-  const {listings = {}} = await chrome.storage.local.get("listings");
-  const matches = state.pendingAlerts.map((id) => listings[id]).filter(Boolean);
-  await chrome.storage.local.set({config: {...config, backfillDone: true}});
+  const {listings = {}} = await local("listings");
+  await setMeta({backfillDone: true});
+  const matches = (state.pendingAlerts || []).map((id) => listings[id]).filter(Boolean)
+    .map((l) => ({...l, ...parseListing(l.text, l.url)}));
   await telegram(config,
     `✅ הסריקה הראשונה הסתיימה\nנבדקו ${state.counts.posts} פוסטים מ־${state.total} קבוצות.\n` +
-    `נמצאו ${matches.length} דירות מתאימות. כל הדירות מחכות לך בלוח הדירות של התוסף.`).catch(() => {});
+    `נמצאו ${matches.length} דירות מתאימות.\n📋 כל הדירות: ${Sync.APP_URL}`).catch(() => {});
   for (const listing of matches.slice(0, MAX_ALERTS_FROM_BACKFILL)) {
     await telegram(config, formatAlert(listing, "🏠 נמצאה בסריקת השבועיים האחרונים")).catch(() => {});
     await sleep(400);
@@ -347,71 +427,83 @@ async function finishBackfill(config, state) {
 
 async function startScan(requested) {
   const config = await getConfig();
-  const mode = requested || (config.backfillDone ? "quick" : "backfill");
+  if (!config.groupUrls.length) return;
+  const meta = await getMeta();
+  const mode = requested || (meta.backfillDone ? "quick" : "backfill");
   runScan(mode).catch(console.error);
 }
 
 // ---------- Events ----------
 
-chrome.runtime.onInstalled.addListener(async (details) => {
-  // Versions before 0.4 mostly saved comments instead of posts: start clean
-  // and redo the two-week scan.
-  if (details.reason === "update" && /^0\.[0-3]\./.test(details.previousVersion || "")) {
-    const config = await getConfig();
-    await chrome.storage.local.set({listings: {}, debug: {}, scan: {running: false}, config: {...config, backfillDone: false}});
-    if (config.enabled) startScan("backfill");
+async function openApp() {
+  const pairing = await getPairing();
+  chrome.tabs.create({url: pairing ? Sync.appLink(pairing.githubToken, pairing.key) : chrome.runtime.getURL("pair.html")});
+}
+
+async function watchdog() {
+  const scan = await getScan();
+  if (scan.running && Date.now() - (scan.heartbeat || 0) > 120000) {
+    // Chrome may stop the worker mid-scan; pick up where it left off.
+    await setScan({heartbeat: Date.now()});
+    runScan(scan.mode, true).catch(console.error);
+    return;
   }
+  // Pick up settings changes and "scan now" requests from the web app.
+  const config = await pullConfig().catch(() => null);
+  if (!config) return;
+  const meta = await getMeta();
+  if (config.scanRequest?.at > meta.lastScanRequestAt) {
+    await setMeta({lastScanRequestAt: config.scanRequest.at});
+    if (config.scanRequest.mode === "stop") {
+      await setScan({running: false});
+    } else if (!scan.running) {
+      startScan(config.scanRequest.mode);
+    }
+  } else if (config.enabled && !meta.backfillDone && !scan.running && !scan.lastRun) {
+    startScan("backfill");
+  }
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
   await schedule();
-  chrome.tabs.create({url: chrome.runtime.getURL("dashboard.html")});
+  openApp();
 });
 chrome.runtime.onStartup.addListener(schedule);
-chrome.action.onClicked.addListener(() => chrome.tabs.create({url: chrome.runtime.getURL("dashboard.html")}));
+chrome.action.onClicked.addListener(openApp);
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "scan") {
     const config = await getConfig();
     if (config.enabled) startScan();
   } else if (alarm.name === "watchdog") {
-    // Chrome may stop the worker mid-scan; pick up where it left off.
-    const scan = await getScan();
-    if (scan.running && Date.now() - (scan.heartbeat || 0) > 120000) {
-      await setScan({heartbeat: Date.now()});
-      runScan(scan.mode, true).catch(console.error);
-    }
-  }
-});
-
-chrome.storage.onChanged.addListener((changes) => {
-  if (changes.config) {
-    const before = changes.config.oldValue || {};
-    const after = changes.config.newValue || {};
-    if (before.enabled !== after.enabled || before.intervalMinutes !== after.intervalMinutes) schedule();
-    if (!before.enabled && after.enabled && !after.backfillDone) startScan("backfill");
+    watchdog().catch(console.error);
   }
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
-    if (message?.type === "scan") {
-      await startScan(message.mode);
-      return {ok: true};
+    if (message?.type === "pair") {
+      const token = String(message.token || "").trim();
+      await Sync.checkToken(token);
+      await Sync.ensureDataBranch(token);
+      const pages = await Sync.enablePages(token);
+      const existing = await getPairing();
+      const key = existing?.key || await Sync.newKey();
+      let configFile = null;
+      try {
+        configFile = await Sync.readEncrypted(token, key, Sync.FILES.config);
+      } catch {}
+      if (!configFile) {
+        await Sync.writeEncrypted(token, key, Sync.FILES.config, DEFAULT_CONFIG, "create settings [skip ci]");
+      }
+      await chrome.storage.local.set({pairing: {githubToken: token, key}, meta: {}});
+      await pullConfig();
+      await pushListings();
+      return {ok: true, link: Sync.appLink(token, key), pages};
     }
-    if (message?.type === "stop") {
-      await setScan({running: false, lastError: "הסריקה נעצרה"});
-      await closeWindow();
-      return {ok: true};
-    }
-    if (message?.type === "test-telegram") {
-      const config = await getConfig();
-      await telegram(config, "✅ החיבור עובד! כאן יגיעו התראות על דירות חדשות.");
-      return {ok: true};
-    }
-    if (message?.type === "reevaluate") {
-      const config = await getConfig();
-      const {listings = {}} = await chrome.storage.local.get("listings");
-      Object.values(listings).forEach((listing) => Object.assign(listing, evaluate(listing, config.criteria)));
-      await chrome.storage.local.set({listings});
-      return {ok: true};
+    if (message?.type === "status") {
+      const {pairing, scan, syncError} = await local(["pairing", "scan", "syncError"]);
+      return {ok: true, paired: !!pairing, link: pairing ? Sync.appLink(pairing.githubToken, pairing.key) : "", scan, syncError};
     }
     return {ok: false};
   })().then(sendResponse, (error) => sendResponse({ok: false, error: String(error.message || error)}));

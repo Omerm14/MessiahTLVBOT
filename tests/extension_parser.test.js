@@ -1,4 +1,4 @@
-const P = require("../chrome-extension/parser.js");
+const P = require("../docs/parser.js");
 const C = P.DEFAULT_CRITERIA;
 const cases = [
   ["דירה בלב העיר, 3.5 חדרים, 2 שירותים, 11,800 ש״ח. מרפסת, מעלית וממ״ד. https://example.com/x?utm_source=a", "match"],

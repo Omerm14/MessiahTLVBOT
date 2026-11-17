@@ -2,6 +2,7 @@ name: Tests
 
 on:
   push:
+    branches-ignore: [data]
   pull_request:
 
 jobs:
@@ -20,3 +21,8 @@ jobs:
           node-version: "22"
       - name: Run extension parser tests
         run: node tests/extension_parser.test.js
+      - name: Check shared files are identical in the web app and the extension
+        run: |
+          for f in parser.js sync.js rules.json default-groups.js; do
+            cmp "docs/$f" "chrome-extension/$f" || { echo "docs/$f and chrome-extension/$f differ"; exit 1; }
+          done

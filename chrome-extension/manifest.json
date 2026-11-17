@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
   "name": "צייד הדירות TLV",
-  "version": "0.4.0",
-  "description": "סורק קבוצות דירות בפייסבוק, שולח התראות לטלגרם ומציג לוח דירות. קריאה בלבד.",
+  "version": "0.5.0",
+  "description": "סורק קבוצות דירות בפייסבוק, שולח התראות לטלגרם ומסנכרן לאפליקציית הדירות. קריאה בלבד.",
   "permissions": ["alarms", "storage", "unlimitedStorage", "tabs", "scripting"],
   "host_permissions": [
     "https://www.facebook.com/*",
     "https://facebook.com/*",
-    "https://api.telegram.org/*"
+    "https://api.telegram.org/*",
+    "https://api.github.com/*",
+    "https://omerm14.github.io/*"
   ],
   "background": {"service_worker": "background.js"},
-  "options_page": "dashboard.html",
-  "action": {"default_title": "פתח את לוח הדירות"}
+  "options_page": "pair.html",
+  "action": {"default_title": "פתח את אפליקציית הדירות"}
 }
