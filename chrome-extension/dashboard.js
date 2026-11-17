@@ -33,7 +33,7 @@ function timeAgo(ms) {
 
 function withDefaults(config) {
   return {
-    enabled: false, groupUrls: window.DEFAULT_GROUP_URLS, intervalMinutes: 20, telegramToken: "",
+    enabled: false, groupUrls: DEFAULT_GROUP_URLS, intervalMinutes: 20, telegramToken: "",
     telegramChatId: "", alertOnReview: false, backfillDone: false,
     ...(config || {}), criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})},
   };
