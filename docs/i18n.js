@@ -5,7 +5,7 @@
 (function (root) {
   const STRINGS = {
     he: {
-      appName: "Messiah TLV APT Hunter",
+      appName: "Messiah TLV Apartment Hunter",
       loading: "טוען…",
       gateLead: "כדי לפתוח את הלוח צריך קישור אישי.",
       gateDesktop: "<b>במחשב:</b> לחץ על אייקון Messiah TLV בסרגל של Chrome.",
@@ -95,7 +95,7 @@
       langButton: "EN", langAria: "Switch to English", langGate: "English",
     },
     en: {
-      appName: "Messiah TLV APT Hunter",
+      appName: "Messiah TLV Apartment Hunter",
       loading: "Loading…",
       gateLead: "You need your personal link to open the board.",
       gateDesktop: "<b>On your computer:</b> click the Messiah TLV icon in the Chrome toolbar.",
