@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_BOT_USERNAME: ${{ secrets.TELEGRAM_BOT_USERNAME }}
       TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.TELEGRAM_ALLOWED_CHAT_IDS }}
       APARTMENT_DB_PATH: data/apartments.db
     steps:
@@ -30,7 +29,6 @@ jobs:
       - name: Validate configuration
         run: |
           test -n "$TELEGRAM_BOT_TOKEN" || (echo "Missing TELEGRAM_BOT_TOKEN secret" && exit 1)
-          test -n "$TELEGRAM_BOT_USERNAME" || (echo "Missing TELEGRAM_BOT_USERNAME secret" && exit 1)
       - name: Check Telegram once
         run: PYTHONPATH=src python -m apartment_hunter.bot --once
       - name: Persist bot state

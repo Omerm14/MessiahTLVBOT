@@ -25,8 +25,7 @@ MVP חינמי לבוט Telegram שמקבל מכם הודעות, פוסטים ו
 3. ב־GitHub פתחו `Settings` → `Secrets and variables` → `Actions` → `New repository secret`.
 4. צרו את הסודות הבאים:
    - `TELEGRAM_BOT_TOKEN` — הטוקן החדש מ־BotFather.
-   - `TELEGRAM_BOT_USERNAME` — ה־username של הבוט, ללא `@`.
-5. הפעילו ידנית פעם אחת את `Actions` → `Apartment Hunter Bot` → `Run workflow`.
+5. הפעילו ידנית פעם אחת את `Actions` → `Apartment Hunter Bot` → `Run workflow`. אין צורך לשמור את שם המשתמש של הבוט; Telegram מזהה אותו מתוך הטוקן.
 6. שלחו לבוט `/id`, הפעילו שוב את ה־workflow, וקבלו מהבוט את המספר של הצ׳אט.
 7. הוסיפו Secret בשם `TELEGRAM_ALLOWED_CHAT_IDS` עם המספר שקיבלתם. לכמה משתמשים, הפרידו בפסיקים. עד שהסוד הזה מוגדר הבוט פתוח לכל מי שמוצא אותו, לכן השלימו את הצעד מיד.
 8. שלחו מודעת ניסיון והפעילו את ה־workflow ידנית, או המתינו למחזור המתוזמן הבא.
@@ -41,14 +40,12 @@ MVP חינמי לבוט Telegram שמקבל מכם הודעות, פוסטים ו
 
 ```bash
 security add-generic-password -a "$USER" -s apartment-hunter-token -w
-security add-generic-password -a "$USER" -s apartment-hunter-username -w
 ```
 
 לאחר מכן הריצו בלי להדפיס את הטוקן למסך:
 
 ```bash
 export TELEGRAM_BOT_TOKEN="$(security find-generic-password -a "$USER" -s apartment-hunter-token -w)"
-export TELEGRAM_BOT_USERNAME="$(security find-generic-password -a "$USER" -s apartment-hunter-username -w)"
 export TELEGRAM_ALLOWED_CHAT_IDS="123456789"
 PYTHONPATH=src python3 -m apartment_hunter.bot
 ```
