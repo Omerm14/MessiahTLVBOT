@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Messiah",
-  "version": "0.7.0",
-  "description": "סורק קבוצות דירות בפייסבוק, שולח התראות לטלגרם ומסנכרן לאפליקציית הדירות. קריאה בלבד.",
+  "version": "0.8.0",
+  "description": "סורק קבוצות פייסבוק, יד2, מדלן, הומלס, קומו וערוצי טלגרם, מסנן מודעות שאינן דירות ושולח התראות לטלגרם. קריאה בלבד.",
   "permissions": [
     "alarms",
     "storage",
@@ -15,7 +15,13 @@
     "https://facebook.com/*",
     "https://api.telegram.org/*",
     "https://api.github.com/*",
-    "https://omerm14.github.io/*"
+    "https://omerm14.github.io/*",
+    "https://api.anthropic.com/*",
+    "https://www.yad2.co.il/*",
+    "https://www.madlan.co.il/*",
+    "https://www.homeless.co.il/*",
+    "https://www.komo.co.il/*",
+    "https://t.me/*"
   ],
   "background": {
     "service_worker": "background.js"

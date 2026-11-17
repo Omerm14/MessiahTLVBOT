@@ -1,6 +1,7 @@
-importScripts("default-groups.js", "parser.js", "sync.js");
+importScripts("default-groups.js", "parser.js", "sync.js", "sources.js");
 
-const {parseListing, evaluate, DEFAULT_CRITERIA} = self.ApartmentParser;
+const {parseListing, evaluate, resolveKind, withAiFields, isDuplicate, wordPairs, similarity, CONFIDENT, KINDS, DEFAULT_CRITERIA} = self.ApartmentParser;
+const Sources = self.HunterSources;
 const Sync = self.HunterSync;
 
 // Settings are edited in the web app and synced from the repository.
@@ -25,7 +26,11 @@ async function local(keys) {
 
 async function getConfig() {
   const {config} = await local("config");
-  return {...DEFAULT_CONFIG, ...(config || {}), criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})}};
+  return {
+    ...DEFAULT_CONFIG, ...(config || {}),
+    criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})},
+    sources: {...Sources.DEFAULT_SOURCES, ...(config?.sources || {})},
+  };
 }
 
 async function getMeta() {
@@ -104,7 +109,7 @@ function pushListings() {
 async function doPushListings() {
   const pairing = await getPairing();
   if (!pairing) return;
-  const {listings = {}, debug = {}, scan = {}} = await local(["listings", "debug", "scan"]);
+  const {listings = {}, debug = {}, scan = {}, aiUsage = null, aiError = ""} = await local(["listings", "debug", "scan", "aiUsage", "aiError"]);
   const cutoff = Date.now() - KEEP_DAYS * 86400000;
   const kept = Object.values(listings).filter((l) => (l.lastSeen || l.firstSeen) >= cutoff);
   const {pendingAlerts, tabId, windowId, ...scanStatus} = scan;
@@ -113,10 +118,12 @@ async function doPushListings() {
     version: chrome.runtime.getManifest().version,
     scan: scanStatus,
     debug,
+    ai: {usage: aiUsage, error: aiError},
     listings: kept.map((l) => ({
       id: l.id, text: l.text.slice(0, 3000), url: l.url, author: l.author, image: l.image,
       postedLabel: l.postedLabel, source: l.source, sourceName: l.sourceName,
       firstSeen: l.firstSeen, lastSeen: l.lastSeen, fromBackfill: l.fromBackfill,
+      sourceType: l.sourceType || "facebook", sources: l.sources || [], ai: l.ai || null, repostedAt: l.repostedAt || 0,
     })),
   };
   const meta = await getMeta();
@@ -152,7 +159,7 @@ async function telegram(config, text, buttons = null) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true,
-        ...(buttons ? {reply_markup: {inline_keyboard: [buttons]}} : {}),
+        ...(buttons ? {reply_markup: {inline_keyboard: [await personalizeButtons(buttons, chat, secrets)]}} : {}),
       }),
     });
     const result = await response.json().catch(() => ({}));
@@ -185,9 +192,22 @@ function formatAlert(listing, title) {
   return lines.join("\n");
 }
 
+const BOARD = "__board__";
+
 function alertButtons(listing) {
   const post = /^https:\/\//.test(listing.url || "") ? listing.url : listing.source;
-  return [{text: "פתח את הפוסט", url: post}, {text: "כל הדירות", url: Sync.APP_URL}];
+  return [{text: "פתח את הפוסט", url: post}, {text: "פתח את הלוח", url: BOARD}];
+}
+
+// The "open the board" button carries each chat's own personal link, so tapping any
+// alert opens the app signed in. Chats we can't match get the plain address.
+async function personalizeButtons(buttons, chat, secrets) {
+  const pairing = await getPairing();
+  const member = (secrets.members || []).find((m) => m.chatId && String(m.chatId) === String(chat));
+  const link = pairing && secrets.ownerChatId && String(secrets.ownerChatId) === String(chat)
+    ? ownerLink(pairing)
+    : member?.link || Sync.APP_URL;
+  return buttons.map((button) => (button.url === BOARD ? {...button, url: link} : button));
 }
 
 // ---------- Facebook page script (runs inside the group tab) ----------
@@ -224,6 +244,7 @@ async function collectFromPage(rules) {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   const PERMALINK = re(rules.permalink);
+  const SPONSORED = rules.skipSponsored ? re(rules.skipSponsored) : null;
   const DETAIL = re(rules.detailLine);
   const IMAGE = re(rules.imageSrc);
   const posts = [];
@@ -264,6 +285,9 @@ async function collectFromPage(rules) {
     const anchors = [...unit.querySelectorAll("a[href]")].filter((a) => !isComment(a));
     const permalink = anchors.find((a) => PERMALINK.test(a.href));
     if (permalink) stats.withPermalink++;
+    // Ads in the feed, and loose text with no link and no numbers, are never listings.
+    if (SPONSORED && [...unit.querySelectorAll("a, span")].some((el) => SPONSORED.test((el.innerText || "").trim()))) continue;
+    if (!permalink && !/\d{3,}/.test(text)) continue;
     const author = (unit.querySelector(rules.authorSelector)?.innerText || "").split("\n")[0].trim();
     const image = [...unit.querySelectorAll("img")].find((img) =>
       !isComment(img) && IMAGE.test(img.src) && (img.naturalWidth || img.width) >= rules.minImageWidth);
@@ -360,28 +384,290 @@ async function scanGroup(groupUrl, mode, rules) {
   return {posts: [...found.values()], groupName};
 }
 
-async function storePosts(posts, groupUrl, groupName, mode, config) {
+// Non-Facebook sources: open the page, read it a few times while scrolling.
+async function scanPage(target, mode, rules) {
+  const siteRules = rules.sources?.[target.type];
+  if (!siteRules) throw new Error(`no rules for ${target.type}`);
+  const scan = await getScan();
+  const tabId = await ensureWindow(scan);
+  await chrome.tabs.update(tabId, {url: target.url});
+  await waitForLoad(tabId);
+  const collect = target.type === "telegram" ? Sources.collectTelegram : Sources.collectListingPage;
+  const found = new Map();
+  let groupName = "";
+  let lastDebug = null;
+  const rounds = siteRules.rounds?.[mode] || 1;
+  for (let round = 0; round < rounds; round++) {
+    if (!(await getScan()).running) throw new Error("STOPPED");
+    const [result] = await chrome.scripting.executeScript({target: {tabId}, func: collect, args: [siteRules]});
+    const data = result?.result || {posts: []};
+    if (data.blocked) {
+      lastDebug = {title: target.type, round, blocked: true, posts: 0, samples: []};
+      break;
+    }
+    groupName = data.groupName || groupName;
+    for (const post of data.posts) if (!found.has(post.externalId || post.text)) found.set(post.externalId || post.text, post);
+    lastDebug = {title: groupName, round, ...(data.stats || {}), posts: data.posts.length, samples: data.samples || []};
+    await setScan({heartbeat: Date.now(), round: round + 1});
+    await sleep(2500 + Math.random() * 1500);
+  }
+  const {debug = {}} = await local("debug");
+  debug[target.url] = {...lastDebug, source: target.type, unique: found.size, at: Date.now()};
+  await chrome.storage.local.set({debug});
+  const names = {yad2: "יד2", madlan: "מדלן", homeless: "הומלס", komo: "קומו"};
+  return {posts: [...found.values()], groupName: names[target.type] || groupName || target.type};
+}
+
+// ---------- Storing, merging duplicates, classifying ----------
+
+const MERGE_WINDOW_MS = 30 * 86400000;
+const REPOST_AFTER_MS = 3 * 86400000;
+
+function sourceEntry(target, groupName, post) {
+  return {type: target.type, name: groupName || target.type, url: post.url || target.url, seenAt: Date.now()};
+}
+
+function addSource(listing, entry) {
+  listing.sources = listing.sources || [];
+  if (!listing.sources.some((s) => s.url === entry.url)) listing.sources.push(entry);
+}
+
+// Finds an earlier listing for the same apartment: same source item, same text, or a
+// near-duplicate (same phone and details, or 80%+ of the wording) from the last 30 days.
+function findExisting(listings, index, post, parsed, id) {
+  if (listings[id]) return listings[id];
+  if (post.externalKey && index.byExternal.has(post.externalKey)) return listings[index.byExternal.get(post.externalKey)];
+  const pairs = wordPairs(post.text);
+  const candidate = {...parsed, text: post.text};
+  for (const other of index.recent) {
+    if (other.phones.some((phone) => parsed.phones.includes(phone)) || similarity(pairs, other.pairs) >= 0.5) {
+      if (isDuplicate(other.listing, candidate)) return other.listing;
+    }
+  }
+  return null;
+}
+
+function buildIndex(listings) {
+  const byExternal = new Map();
+  const recent = [];
+  const cutoff = Date.now() - MERGE_WINDOW_MS;
+  for (const listing of Object.values(listings)) {
+    if (listing.externalKey) byExternal.set(listing.externalKey, listing.id);
+    if ((listing.lastSeen || listing.firstSeen) < cutoff) continue;
+    const parsed = parseListing(listing.text, listing.url);
+    recent.push({listing: {...parsed, text: listing.text, street: listing.ai?.street || ""}, id: listing.id, phones: parsed.phones, pairs: wordPairs(listing.text)});
+  }
+  for (const entry of recent) entry.listing = Object.assign(entry.listing, {id: entry.id});
+  return {byExternal, recent};
+}
+
+function evaluateStored(listing, config) {
+  const parsed = withAiFields(parseListing(listing.text, listing.url), listing.ai);
+  const kindInfo = resolveKind(parsed, listing.ai, null);
+  return {...listing, ...parsed, url: listing.url || parsed.url, ...evaluate(parsed, config.criteria, kindInfo)};
+}
+
+async function storePosts(posts, target, groupName, mode, config) {
   const {listings = {}} = await local("listings");
+  const index = buildIndex(listings);
   const fresh = [];
+  let merged = 0;
   for (const post of posts) {
     const parsed = parseListing(post.text, post.url);
     if (parsed.textKey.length < 20) continue;
+    post.externalKey = post.externalId ? `${target.type}:${post.externalId}` : "";
     const id = idFor(parsed.textKey);
-    if (listings[id]) {
-      if (!listings[id].url && parsed.url) listings[id].url = parsed.url;
-      listings[id].lastSeen = Date.now();
+    const existing = findExisting(listings, index, post, parsed, id);
+    if (existing) {
+      const stored = listings[existing.id];
+      if (!stored) continue;
+      if (!stored.url && parsed.url) stored.url = parsed.url;
+      if (Date.now() - (stored.lastSeen || stored.firstSeen) > REPOST_AFTER_MS) stored.repostedAt = Date.now();
+      stored.lastSeen = Date.now();
+      addSource(stored, sourceEntry(target, groupName, post));
+      merged++;
       continue;
     }
     const listing = {
       id, text: post.text, url: parsed.url, author: post.author, image: post.image,
-      postedLabel: post.postedLabel, source: groupUrl, sourceName: groupName,
+      postedLabel: post.postedLabel, source: target.url, sourceName: groupName, sourceType: target.type,
+      externalKey: post.externalKey, sources: [sourceEntry(target, groupName, post)],
       firstSeen: Date.now(), lastSeen: Date.now(), fromBackfill: mode === "backfill",
+      // Listing sites only carry rentals; no need to classify them.
+      ai: target.trusted && parsed.kind !== "sale" ? {kind: "rental", by: "source"} : null,
     };
     listings[id] = listing;
-    fresh.push({...listing, ...parsed, ...evaluate(parsed, config.criteria)});
+    index.recent.push({listing: {...parsed, text: post.text, id}, id, phones: parsed.phones, pairs: wordPairs(post.text)});
+    if (post.externalKey) index.byExternal.set(post.externalKey, id);
+    fresh.push(listing);
   }
   await chrome.storage.local.set({listings});
-  return fresh;
+  await classifyUnsure(fresh.map((l) => l.id), config);
+  const {listings: latest = {}} = await local("listings");
+  return {fresh: fresh.map((l) => evaluateStored(latest[l.id] || l, config)), merged};
+}
+
+// One-time pass that merges duplicates collected before merging existed.
+async function mergeStoredDuplicates() {
+  const meta = await getMeta();
+  if (meta.mergedV1) return;
+  const {listings = {}} = await local("listings");
+  const kept = {};
+  const index = {byExternal: new Map(), recent: []};
+  for (const listing of Object.values(listings).sort((a, b) => a.firstSeen - b.firstSeen)) {
+    const parsed = parseListing(listing.text, listing.url);
+    const existing = findExisting(kept, index, listing, parsed, listing.id);
+    if (existing && kept[existing.id]) {
+      addSource(kept[existing.id], {type: listing.sourceType || "facebook", name: listing.sourceName, url: listing.url || listing.source, seenAt: listing.firstSeen});
+      kept[existing.id].lastSeen = Math.max(kept[existing.id].lastSeen || 0, listing.lastSeen || 0);
+      continue;
+    }
+    listing.sources = listing.sources?.length ? listing.sources
+      : [{type: listing.sourceType || "facebook", name: listing.sourceName, url: listing.url || listing.source, seenAt: listing.firstSeen}];
+    kept[listing.id] = listing;
+    index.recent.push({listing: {...parsed, text: listing.text, id: listing.id}, id: listing.id, phones: parsed.phones, pairs: wordPairs(listing.text)});
+  }
+  await chrome.storage.local.set({listings: kept});
+  await setMeta({mergedV1: true, mergedRemoved: Object.keys(listings).length - Object.keys(kept).length});
+}
+
+// ---------- AI check for unclear posts (Claude Haiku) ----------
+
+const AI_MODEL = "claude-haiku-5-5";
+const AI_BATCH = 10;
+const AI_SYSTEM = [
+  "You sort posts collected from Tel Aviv apartment groups, channels and listing sites.",
+  "For each post decide what it is:",
+  "- rental: someone offers a whole apartment for long-term rent (owner, tenant leaving, or agent).",
+  "- roommate: a room in a shared apartment, or a search for a roommate.",
+  "- sublet: short-term rent, a few weeks or months.",
+  "- seeking: someone is looking for an apartment (often with a budget).",
+  "- sale: an apartment or an item for sale or giveaway.",
+  "- service: an ad for a service, project, course, or business.",
+  "- other: questions, group rules, commercial space, parking, anything else.",
+  "Posts are mostly in Hebrew. Judge by meaning, not keywords: a landlord 'looking for tenants' is a rental.",
+  "Also extract, when the post states them: the street name with number (empty string if unknown), the monthly rent in shekels (0 if unknown), and the number of rooms in the Israeli count (0 if unknown).",
+  "confidence is your certainty from 0 to 1.",
+].join("\n");
+
+const AI_SCHEMA = {
+  type: "object",
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: {type: "string"},
+          kind: {type: "string", enum: ["rental", "roommate", "sublet", "seeking", "sale", "service", "other"]},
+          confidence: {type: "number"},
+          street: {type: "string"},
+          price: {type: "integer"},
+          rooms: {type: "number"},
+        },
+        required: ["id", "kind", "confidence", "street", "price", "rooms"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["results"],
+  additionalProperties: false,
+};
+
+// The person's latest corrections ("not an apartment" / "this is an apartment"),
+// read from the shared marks file, become examples for the model.
+async function correctionExamples(listings) {
+  const pairing = await getPairing();
+  if (!pairing) return [];
+  try {
+    const file = await Sync.readFile(pairing.githubToken, Sync.FILES.state);
+    if (!file) return [];
+    const marks = await Sync.decryptJson(pairing.key, file.text);
+    return Object.entries(marks.items || {})
+      .filter(([id, mark]) => mark.kind && listings[id])
+      .sort((a, b) => (b[1].at || 0) - (a[1].at || 0))
+      .slice(0, 20)
+      .map(([id, mark]) => ({text: listings[id].text.replace(/\s+/g, " ").slice(0, 400), kind: mark.kind}));
+  } catch {
+    return [];
+  }
+}
+
+async function aiClassify(items, apiKey, examples) {
+  const exampleText = examples.length
+    ? `Corrections made by the user (follow these judgments):\n${examples.map((e) => `- [${e.kind}] ${e.text}`).join("\n")}\n\n`
+    : "";
+  const posts = items.map((l) => ({id: l.id, text: l.text.replace(/\s+/g, " ").slice(0, 1500)}));
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: AI_MODEL,
+      max_tokens: 4096,
+      system: [{type: "text", text: AI_SYSTEM, cache_control: {type: "ephemeral"}}],
+      output_config: {effort: "low", format: {type: "json_schema", schema: AI_SCHEMA}},
+      messages: [{role: "user", content: `${exampleText}Posts:\n${JSON.stringify(posts)}`}],
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error?.message || `Anthropic API error ${response.status}`);
+  if (result.stop_reason === "refusal") throw new Error("the model declined this batch");
+  const text = (result.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  const parsed = JSON.parse(text);
+  const usage = result.usage || {};
+  const {aiUsage = {input: 0, output: 0, calls: 0}} = await local("aiUsage");
+  await chrome.storage.local.set({aiUsage: {
+    input: aiUsage.input + (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
+    output: aiUsage.output + (usage.output_tokens || 0),
+    calls: aiUsage.calls + 1,
+  }});
+  return parsed.results || [];
+}
+
+// Runs the AI on posts the rules weren't sure about. Without a key, they stay
+// unsure and land in "To review" instead of "Matches".
+async function classifyUnsure(ids, config) {
+  const {secrets, listings = {}} = await local(["secrets", "listings"]);
+  if (!secrets?.anthropicKey) return 0;
+  const unsure = ids.map((id) => listings[id]).filter((l) => {
+    if (!l || l.ai) return false;
+    return parseListing(l.text, l.url).kindConfidence < CONFIDENT;
+  });
+  if (!unsure.length) return 0;
+  const examples = await correctionExamples(listings);
+  let done = 0;
+  for (let i = 0; i < unsure.length; i += AI_BATCH) {
+    const batch = unsure.slice(i, i + AI_BATCH);
+    try {
+      const results = await aiClassify(batch, secrets.anthropicKey, examples);
+      for (const r of results) {
+        if (!listings[r.id] || !KINDS.includes(r.kind)) continue;
+        listings[r.id].ai = {kind: r.kind, confidence: r.confidence, street: r.street || "", price: r.price || 0, rooms: r.rooms || 0, by: "ai", at: Date.now()};
+        done++;
+      }
+      await chrome.storage.local.set({listings, aiError: ""});
+    } catch (error) {
+      await chrome.storage.local.set({aiError: `AI: ${error.message}`});
+      break;
+    }
+  }
+  return done;
+}
+
+// Older posts the rules weren't sure about get checked a few at a time while idle.
+async function classifyBacklog(config) {
+  const {listings = {}} = await local("listings");
+  const ids = Object.values(listings)
+    .filter((l) => !l.ai && parseListing(l.text, l.url).kindConfidence < CONFIDENT)
+    .sort((a, b) => b.firstSeen - a.firstSeen)
+    .slice(0, AI_BATCH * 2)
+    .map((l) => l.id);
+  if (ids.length && await classifyUnsure(ids, config)) pushListings();
 }
 
 async function runScan(mode, resume = false) {
@@ -389,30 +675,44 @@ async function runScan(mode, resume = false) {
   let scan = await getScan();
   if (scan.running && !resume) return;
   const rules = await getRules();
+  const targets = Sources.targetsFor(config, rules);
   if (!resume) {
     scan = await setScan({
-      running: true, mode, groupIndex: 0, total: config.groupUrls.length, startedAt: Date.now(),
+      running: true, mode, groupIndex: 0, total: targets.length, startedAt: Date.now(),
       heartbeat: Date.now(), counts: {posts: 0, new: 0, matches: 0}, pendingAlerts: [], lastError: "", currentGroup: "",
     });
     pushListings();
   }
   try {
-    for (let index = scan.groupIndex; index < config.groupUrls.length; index++) {
-      const groupUrl = config.groupUrls[index];
-      await setScan({groupIndex: index, currentGroup: groupUrl, heartbeat: Date.now(), round: 0});
+    for (let index = scan.groupIndex; index < targets.length; index++) {
+      const target = targets[index];
+      await setScan({groupIndex: index, currentGroup: target.url, currentSource: target.type, heartbeat: Date.now(), round: 0});
       let fresh = [];
       try {
-        const {posts, groupName} = await scanGroup(groupUrl, scan.mode, rules);
-        fresh = await storePosts(posts, groupUrl, groupName, scan.mode, config);
+        const {posts, groupName} = target.type === "facebook"
+          ? await scanGroup(target.url, scan.mode, rules)
+          : await scanPage(target, scan.mode, rules);
+        const stored = await storePosts(posts, target, groupName, scan.mode, config);
+        fresh = stored.fresh;
         const state = await getScan();
         const counts = {...state.counts};
         counts.posts += posts.length;
         counts.new += fresh.length;
+        counts.merged = (counts.merged || 0) + stored.merged;
+        counts.filtered = (counts.filtered || 0) + fresh.filter((l) => l.status === "filtered").length;
         counts.matches += fresh.filter((l) => l.status === "match").length;
         await setScan({counts});
+        const {debug = {}} = await local("debug");
+        if (debug[target.url]) {
+          debug[target.url] = {...debug[target.url], source: target.type, fresh: fresh.length, merged: stored.merged,
+            filtered: fresh.filter((l) => l.status === "filtered").length};
+          await chrome.storage.local.set({debug});
+        }
       } catch (error) {
-        if (["NOT_LOGGED_IN", "STOPPED"].includes(String(error.message))) throw error;
-        console.warn("Could not scan", groupUrl, error);
+        // Facebook being logged out only stops the Facebook part of the scan.
+        if (String(error.message) === "STOPPED") throw error;
+        if (String(error.message) === "NOT_LOGGED_IN") await setScan({lastError: "Chrome לא מחובר לפייסבוק. התחבר לפייסבוק כדי לסרוק את הקבוצות."});
+        console.warn("Could not scan", target.url, error);
       }
       const alertable = fresh.filter((l) => l.status === "match" || (config.alertOnReview && l.status === "review"));
       if (scan.mode === "backfill") {
@@ -450,8 +750,8 @@ async function finishBackfill(config, state) {
   const matches = (state.pendingAlerts || []).map((id) => listings[id]).filter(Boolean)
     .map((l) => ({...l, ...parseListing(l.text, l.url)}));
   await telegram(config,
-    `<b>✅ הסריקה הראשונה הסתיימה</b>\nנבדקו ${state.counts.posts} פוסטים מ־${state.total} קבוצות.\n` +
-    `נמצאו ${matches.length} דירות מתאימות.`, [{text: "פתח את הלוח", url: Sync.APP_URL}]).catch(() => {});
+    `<b>✅ הסריקה הראשונה הסתיימה</b>\nנבדקו ${state.counts.posts} פוסטים מ־${state.total} מקורות.\n` +
+    `נמצאו ${matches.length} דירות מתאימות.`, [{text: "פתח את הלוח", url: BOARD}]).catch(() => {});
   for (const listing of matches.slice(0, MAX_ALERTS_FROM_BACKFILL)) {
     await telegram(config, formatAlert(listing, "🏠 מהשבועיים האחרונים"), alertButtons(listing)).catch(() => {});
     await sleep(400);
@@ -460,7 +760,7 @@ async function finishBackfill(config, state) {
 
 async function startScan(requested) {
   const config = await getConfig();
-  if (!config.groupUrls.length) return;
+  if (!Sources.targetsFor(config, await getRules()).length) return;
   const meta = await getMeta();
   const mode = requested || (meta.backfillDone ? "quick" : "backfill");
   runScan(mode).catch(console.error);
@@ -498,6 +798,13 @@ async function watchdog() {
     }
   } else if (config.enabled && !meta.backfillDone && !scan.running && !scan.lastRun) {
     startScan("backfill");
+  } else if (!scan.running) {
+    // Idle: merge duplicates stored before merging existed, then check unclear posts.
+    if (!meta.mergedV1) {
+      await mergeStoredDuplicates();
+      pushListings();
+    }
+    await classifyBacklog(config);
   }
 }
 

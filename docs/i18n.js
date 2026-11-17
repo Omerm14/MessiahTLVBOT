@@ -10,6 +10,29 @@
       gateLead: "כדי לפתוח את הלוח צריך קישור אישי.",
       gateDesktop: "<b>במחשב:</b> לחץ על אייקון Messiah בסרגל של Chrome.",
       gatePhone: "<b>בטלפון:</b> פתח את הלוח במחשב, עבור אל <b>הגדרות ← פתיחה בטלפון</b> וסרוק את הברקוד.",
+      gateTelegram: "<b>מטלגרם:</b> לחץ על ״פתח את הלוח״ בכל התראה על דירה.",
+      pasteLabel: "או הדבק כאן את הקישור האישי", pasteOpen: "פתח",
+      pasteBad: "זה לא קישור אישי של Messiah. הוא נראה כמו …/MessiahTLVBOT/#t=…",
+      ownerChat: "מזהה הצ׳אט שלך (כפתור ״פתח את הלוח״ בהתראות שלך יכניס אותך מחובר)",
+      memberChat: "4. מזהה הצ׳אט שלו בטלגרם (לא חובה: ההתראות שלו יכניסו אותו מחובר)",
+      phoneInstall: "באייפון: אחרי שהלוח נפתח ב־Safari, הוסף אותו למסך הבית <b>מאותו עמוד</b>. כך האייקון ייפתח תמיד מחובר.",
+      installTip: "כדי שהלוח יישאר מחובר באייפון: לחץ <b>שיתוף ← הוסף למסך הבית</b> עכשיו, מהעמוד הזה.",
+      tabFiltered: "סוננו", statusFiltered: "לא דירה", reposted: "פורסם שוב",
+      sources: "מקורות", sourcesTitle: "מקורות",
+      sourcesLead: "כל המקורות נקראים מה־Chrome במחשב שלך, כמו פייסבוק. יד2, מדלן, הומלס וקומו נסרקים לפי המחיר והחדרים שבחרת.",
+      telegramChannels: "ערוצי טלגרם ציבוריים, אחד בכל שורה (למשל ‎@telavivrent)",
+      source: {facebook: "פייסבוק", yad2: "יד2", madlan: "מדלן", homeless: "הומלס", komo: "קומו", telegram: "טלגרם"},
+      sourceHint: {facebook: "הקבוצות שברשימה למטה", yad2: "מודעות השכרה בתל אביב", madlan: "מודעות השכרה בתל אביב",
+        homeless: "מודעות השכרה, הרבה בעלי דירות", komo: "מודעות השכרה, הרבה בעלי דירות", telegram: "הערוצים שברשימה למטה"},
+      includeRoommates: "הצג גם חדרים בדירת שותפים", includeSublets: "הצג גם סאבלטים ודירות לתקופה קצרה",
+      aiTitle: "סינון חכם (AI)",
+      aiLead: "פוסטים שהכללים לא בטוחים לגביהם נבדקים ב־Claude Haiku: האם זו באמת דירה להשכרה. בלי מפתח הם עוברים ל״לבדיקה״. עלות משוערת: כמה סנטים בחודש.",
+      aiKey: "מפתח Anthropic API (רק אתה רואה אותו)", badAiKey: "מפתח Anthropic מתחיל ב־sk-ant-",
+      aiUsage: (calls, dollars) => `נבדקו ${calls} קבוצות פוסטים · עלות עד כה כ־${dollars}$`,
+      kindMarkedBy: (name) => name ? `סומן ידנית ע״י ${name}` : "סומן ידנית",
+      checkedByAi: "נבדק ב־AI",
+      postedIn: (n) => `פורסם ב־${n} מקומות`,
+      isApartment: "זו כן דירה", notApartment: "לא דירה",
       settings: "הגדרות", stop: "עצור", scanNow: "סרוק עכשיו", close: "סגור", save: "שמור",
       onbTitle: "עוד שני צעדים והלוח מתחיל להתמלא",
       onbTelegram: "בהגדרות: הדבק את טוקן הבוט ואת מזהה הצ׳אט. שלח <bdi dir=\"ltr\">/start</bdi> לבוט בטלגרם כדי לקבל את המזהה.",
@@ -46,8 +69,8 @@
       emptyScanning: "הדירות הראשונות יופיעו כאן בעוד כמה דקות.",
       emptyFilteredTitle: "אין דירות שמתאימות לסינון",
       emptyFiltered: "נסה להרחיב את המחיר או להוריד אזור.",
-      emptyTabTitle: { match: "עדיין אין דירות מתאימות", review: "אין דירות לבדיקה", all: "אין דירות", saved: "עוד לא שמרת דירות", hidden: "אין דירות מוסתרות" },
-      emptyTab: { match: "דירות שעומדות בכל התנאים שלך יופיעו כאן, ותקבל עליהן התראה בטלגרם.", review: "כאן יופיעו פוסטים שהפרסר לא הצליח לקרוא בהם מחיר, חדרים או אזור.", all: "", saved: "לחץ על הלב בכרטיס כדי לשמור דירה.", hidden: "דירות שהסתרת יופיעו כאן, ואפשר להחזיר אותן." },
+      emptyTabTitle: { match: "עדיין אין דירות מתאימות", review: "אין דירות לבדיקה", all: "אין דירות", saved: "עוד לא שמרת דירות", hidden: "אין דירות מוסתרות", filtered: "לא סוננו פוסטים" },
+      emptyTab: { match: "דירות שעומדות בכל התנאים שלך יופיעו כאן, ותקבל עליהן התראה בטלגרם.", review: "כאן יופיעו פוסטים שהפרסר לא הצליח לקרוא בהם מחיר, חדרים או אזור.", all: "", saved: "לחץ על הלב בכרטיס כדי לשמור דירה.", hidden: "דירות שהסתרת יופיעו כאן, ואפשר להחזיר אותן.", filtered: "פוסטים שאינם דירה להשכרה (מחפשים דירה, שותפים, פרסומות) יופיעו כאן. אם משהו סונן בטעות, לחץ ״זו כן דירה״." },
       // errors
       errKey: "המפתח של GitHub כבר לא תקף. צור מפתח חדש ולחץ על אייקון התוסף במחשב.",
       errOldLink: "הקישור הזה שייך להתקנה ישנה. פתח את הלוח מאייקון התוסף במחשב.",
@@ -100,6 +123,29 @@
       gateLead: "You need your personal link to open the board.",
       gateDesktop: "<b>On your computer:</b> click the Messiah icon in the Chrome toolbar.",
       gatePhone: "<b>On your phone:</b> open the board on your computer, go to <b>Settings → Open on your phone</b> and scan the QR code.",
+      gateTelegram: "<b>From Telegram:</b> tap “Open the board” in any apartment alert.",
+      pasteLabel: "Or paste your personal link here", pasteOpen: "Open",
+      pasteBad: "That isn't a Messiah personal link. It looks like …/MessiahTLVBOT/#t=…",
+      ownerChat: "Your chat ID (the “Open the board” button in your alerts signs you in)",
+      memberChat: "4. Their Telegram chat ID (optional: their alerts will sign them in)",
+      phoneInstall: "On iPhone: once the board opens in Safari, add it to the Home Screen <b>from that same page</b>. The icon then always opens signed in.",
+      installTip: "To stay signed in on iPhone: tap <b>Share → Add to Home Screen</b> now, from this page.",
+      tabFiltered: "Filtered", statusFiltered: "Not an apartment", reposted: "Posted again",
+      sources: "Sources", sourcesTitle: "Sources",
+      sourcesLead: "Every source is read from Chrome on your computer, like Facebook. Yad2, Madlan, Homeless and Komo are searched with your price and rooms.",
+      telegramChannels: "Public Telegram channels, one per line (e.g. @telavivrent)",
+      source: {facebook: "Facebook", yad2: "Yad2", madlan: "Madlan", homeless: "Homeless", komo: "Komo", telegram: "Telegram"},
+      sourceHint: {facebook: "The groups listed below", yad2: "Tel Aviv rental listings", madlan: "Tel Aviv rental listings",
+        homeless: "Rental listings, many private landlords", komo: "Rental listings, many private landlords", telegram: "The channels listed below"},
+      includeRoommates: "Also show rooms in shared apartments", includeSublets: "Also show sublets and short-term rentals",
+      aiTitle: "Smart filter (AI)",
+      aiLead: "Posts the rules aren't sure about are checked by Claude Haiku: is this really an apartment for rent? Without a key they go to “To review”. Expected cost: a few cents a month.",
+      aiKey: "Anthropic API key (only you can see it)", badAiKey: "An Anthropic key starts with sk-ant-",
+      aiUsage: (calls, dollars) => `${calls} batches checked · about ${dollars} USD so far`,
+      kindMarkedBy: (name) => name ? `Marked by ${name}` : "Marked by hand",
+      checkedByAi: "Checked by AI",
+      postedIn: (n) => `Posted in ${n} places`,
+      isApartment: "It is an apartment", notApartment: "Not an apartment",
       settings: "Settings", stop: "Stop", scanNow: "Scan now", close: "Close", save: "Save",
       onbTitle: "Two more steps and the board starts filling up",
       onbTelegram: "In Settings, paste the bot token and your chat ID. Send <bdi dir=\"ltr\">/start</bdi> to the bot in Telegram to get the ID.",
@@ -133,8 +179,8 @@
       emptyScanning: "The first apartments will appear here in a few minutes.",
       emptyFilteredTitle: "Nothing matches these filters",
       emptyFiltered: "Try a higher price or fewer areas.",
-      emptyTabTitle: { match: "No matches yet", review: "Nothing to review", all: "No apartments", saved: "No saved apartments yet", hidden: "No hidden apartments" },
-      emptyTab: { match: "Apartments that meet all your criteria show up here, and you get a Telegram alert for each.", review: "Posts where the price, rooms or area couldn't be read show up here.", all: "", saved: "Tap the heart on a card to save an apartment.", hidden: "Apartments you hide show up here, and you can restore them." },
+      emptyTabTitle: { match: "No matches yet", review: "Nothing to review", all: "No apartments", saved: "No saved apartments yet", hidden: "No hidden apartments", filtered: "Nothing filtered" },
+      emptyTab: { match: "Apartments that meet all your criteria show up here, and you get a Telegram alert for each.", review: "Posts where the price, rooms or area couldn't be read show up here.", all: "", saved: "Tap the heart on a card to save an apartment.", hidden: "Apartments you hide show up here, and you can restore them.", filtered: "Posts that aren't apartments for rent (people searching, roommates, ads) show up here. If something was filtered by mistake, tap “It is an apartment”." },
       errKey: "Your GitHub key is no longer valid. Create a new one and click the extension icon on your computer.",
       errOldLink: "This link belongs to an old install. Open the board from the extension icon on your computer.",
       errLoad: (m) => `Couldn't load data: ${m}`,
@@ -209,6 +255,13 @@
     if (text === "דירה למכירה") return "For sale, not rent";
     if (text === "מחוץ לאזורים שבחרת") return "Outside your areas";
     if (text === "עומדת בכל התנאים") return "Meets all criteria";
+    if (text === "לא בטוח שזו דירה להשכרה") return "Not sure this is an apartment for rent";
+    if (text === "חדר בדירת שותפים") return "Room in a shared apartment";
+    if (text === "סאבלט או לתקופה קצרה") return "Sublet or short-term";
+    if (text === "מחפש/ת דירה") return "Someone looking for an apartment";
+    if (text === "מכירה או מסירה") return "For sale or giveaway";
+    if (text === "פרסומת או שירות") return "Ad or service";
+    if (text === "לא מודעה על דירה") return "Not an apartment listing";
     if ((m = text.match(/^מחיר מעל (.+) ₪$/))) return `Over ₪${m[1]}`;
     if ((m = text.match(/^פחות מ־(.+) חדרים$/))) return `Fewer than ${m[1]} rooms`;
     if ((m = text.match(/^פחות מ־(.+) שירותים$/))) return `Fewer than ${m[1]} bathrooms`;

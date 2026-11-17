@@ -172,6 +172,13 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .onboarding li.done .step-mark { background: var(--ok); border-color: var(--ok); color: var(--surface); }
 .onboarding li.done .step-mark .ic { opacity: 1; }
 
+.install-tip {
+  margin-top: 16px; padding: 10px 8px 10px 16px; border-radius: var(--radius-sm); background: var(--accent-soft);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--ink-2); font-size: 15px;
+}
+[dir="rtl"] .install-tip { padding: 10px 16px 10px 8px; }
+.paste { display: grid; gap: 10px; width: 100%; text-align: start; margin-top: 4px; }
+.paste .btn { justify-self: stretch; }
 .banner {
   margin-top: 16px; padding: 12px 16px; border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger); font-weight: 600;
@@ -284,6 +291,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .badge.review { color: var(--warn); }
 .badge.rejected { color: var(--muted); }
 .badge.new { background: var(--ink); color: var(--surface); }
+.badge.filtered { color: var(--muted); }
 .save {
   position: absolute; top: 8px; inset-inline-end: 8px; width: 40px; height: 40px; border: 0; border-radius: 50%;
   display: grid; place-items: center; cursor: pointer; color: #fff; background: rgba(15, 18, 24, .28);
@@ -315,7 +323,17 @@ a { color: var(--accent); text-underline-offset: 3px; }
 }
 .reasons { margin-top: 6px; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 8px; text-wrap: pretty; }
 .reasons.review { background: var(--warn-soft); color: var(--warn); }
-.reasons.rejected { background: var(--surface-2); color: var(--muted); }
+.reasons.rejected, .reasons.filtered { background: var(--surface-2); color: var(--muted); }
+.kind-note { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.places { margin-top: 6px; font-size: 14px; }
+.places summary { cursor: pointer; color: var(--accent); font-weight: 700; width: fit-content; list-style: none; }
+.places summary::-webkit-details-marker { display: none; }
+.places ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.places a { color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line-strong); }
+.kind-btn { font-size: 13px; color: var(--muted); padding: 0 6px; }
+.source b { color: var(--ink-2); font-weight: 700; }
+.source-list { display: grid; gap: 2px; }
+.source-list .switch-row { padding: 8px 0; }
 .marked { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--heart-ink); }
 .marked .ic { width: 14px; height: 14px; fill: currentColor; stroke: none; }
 .excerpt {
@@ -445,7 +463,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .gate-steps {
   list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 10px; text-align: start; width: 100%;
 }
-.gate-steps li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; color: var(--ink-2); }
+.gate-steps li { text-wrap: pretty; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; color: var(--ink-2); }
 
 /* ---------- small screens ---------- */
 @media (max-width: 720px) {

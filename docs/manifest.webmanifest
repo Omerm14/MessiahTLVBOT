@@ -1,7 +1,6 @@
 {
   "name": "Messiah",
   "short_name": "Messiah",
-  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "dir": "rtl",

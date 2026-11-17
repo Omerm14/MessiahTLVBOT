@@ -1,4 +1,6 @@
-const {parseListing, evaluate, DEFAULT_CRITERIA, NEIGHBORHOOD_NAMES} = window.ApartmentParser;
+const {parseListing, evaluate, resolveKind, withAiFields, DEFAULT_CRITERIA, NEIGHBORHOOD_NAMES} = window.ApartmentParser;
+const SOURCE_TYPES = ["facebook", "yad2", "madlan", "homeless", "komo", "telegram"];
+const DEFAULT_SOURCES = {facebook: true, yad2: true, madlan: true, homeless: true, komo: true, telegram: true, telegramChannels: []};
 const Sync = window.HunterSync;
 const {t} = window.I18n;
 const L = window.I18n;
@@ -26,7 +28,7 @@ const state = {
   marksSha: "",
   secretsFile: {telegramToken: "", members: []}, // owner only
   secretsSha: "",
-  filters: {text: "", price: "", rooms: "", sort: "new", areas: new Set(), bonuses: new Set()},
+  filters: {text: "", price: "", rooms: "", sort: "new", areas: new Set(), bonuses: new Set(), sources: new Set()},
   openTexts: new Set(),
   bannerKey: null,
 };
@@ -41,7 +43,11 @@ const icon = (name) => `<svg class="ic" aria-hidden="true"><use href="#i-${name}
 const num = (value) => Number(value).toLocaleString(L.locale());
 
 function withDefaults(config) {
-  return {...DEFAULT_CONFIG, ...(config || {}), criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})}};
+  return {
+    ...DEFAULT_CONFIG, ...(config || {}),
+    criteria: {...DEFAULT_CRITERIA, ...(config?.criteria || {})},
+    sources: {...DEFAULT_SOURCES, ...(config?.sources || {})},
+  };
 }
 
 // Banners are stored as a key + argument so they re-translate when the language changes.
@@ -61,19 +67,33 @@ async function copy(text) {
 
 // ---------- secrets ----------
 
+// The credentials stay in the address bar on purpose: iPhone "Add to Home Screen"
+// saves the current URL, and the installed app gets its own empty storage. Keeping
+// the hash means the home-screen icon always opens signed in.
+function secretsFromLink(link) {
+  const at = String(link || "").indexOf("#");
+  if (at < 0) return null;
+  const hash = new URLSearchParams(String(link).slice(at + 1));
+  if (!hash.get("t") || !hash.get("k")) return null;
+  return {token: hash.get("t"), key: hash.get("k"), ownerKey: hash.get("o") || "", name: hash.get("n") || ""};
+}
+
+function rememberSecrets(secrets) {
+  try { localStorage.setItem("hunter-secrets", JSON.stringify(secrets)); } catch {}
+  const canonical = Sync.appLink(secrets.token, secrets.key, {ownerKey: secrets.ownerKey, name: secrets.name}).split("#")[1];
+  if (location.hash.slice(1) !== canonical) history.replaceState(null, "", `${location.pathname}#${canonical}`);
+}
+
 function readSecrets() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  if (hash.get("t") && hash.get("k")) {
-    const secrets = {token: hash.get("t"), key: hash.get("k"), ownerKey: hash.get("o") || "", name: hash.get("n") || ""};
-    try { localStorage.setItem("hunter-secrets", JSON.stringify(secrets)); } catch {}
-    history.replaceState(null, "", location.pathname);
-    return secrets;
+  let secrets = secretsFromLink(location.href);
+  if (!secrets) {
+    try {
+      const saved = JSON.parse(localStorage.getItem("hunter-secrets") || "null");
+      if (saved?.token && saved?.key) secrets = saved;
+    } catch {}
   }
-  try {
-    const saved = JSON.parse(localStorage.getItem("hunter-secrets") || "null");
-    if (saved?.token && saved?.key) return saved;
-  } catch {}
-  return null;
+  if (secrets) rememberSecrets(secrets);
+  return secrets;
 }
 
 // ---------- data ----------
@@ -82,11 +102,13 @@ function reparse() {
   const criteria = state.config.criteria;
   const listings = {};
   for (const raw of state.raw) {
-    const parsed = parseListing(raw.text, raw.url);
+    const parsed = withAiFields(parseListing(raw.text, raw.url), raw.ai);
+    const mark = state.marks.items[raw.id] || {};
+    const kindInfo = resolveKind(parsed, raw.ai, mark.kind);
     listings[raw.id] = {
-      ...raw, ...parsed, url: raw.url || parsed.url, ...evaluate(parsed, criteria),
-      saved: !!state.marks.items[raw.id]?.saved, hidden: !!state.marks.items[raw.id]?.hidden,
-      markedBy: state.marks.items[raw.id]?.by || "",
+      ...raw, ...parsed, url: raw.url || parsed.url, ...evaluate(parsed, criteria, kindInfo),
+      kindBy: kindInfo.by, sourceType: raw.sourceType || "facebook", sources: raw.sources || [],
+      saved: !!mark.saved, hidden: !!mark.hidden, markedBy: mark.by || "",
     };
   }
   state.listings = listings;
@@ -181,6 +203,8 @@ function chip(label, pressed, attrs = "") {
 function renderFilterChips() {
   $("fAreas").innerHTML = NEIGHBORHOOD_NAMES.map((name) =>
     chip(L.area(name), state.filters.areas.has(name), `data-area="${esc(name)}"`)).join("");
+  $("fSources").innerHTML = SOURCE_TYPES.map((type) =>
+    chip(t("source")[type], state.filters.sources.has(type), `data-source="${type}"`)).join("");
   $("fBonuses").innerHTML = BONUS_NAMES.map((name) =>
     chip(L.extra(name), state.filters.bonuses.has(name), `data-bonus="${esc(name)}"`)).join("");
 }
@@ -189,13 +213,13 @@ function inTab(listing, tab) {
   if (tab === "hidden") return listing.hidden;
   if (listing.hidden) return false;
   if (tab === "saved") return listing.saved;
-  if (tab === "all") return !listing.seeking;
+  if (tab === "all") return listing.status !== "filtered";
   return listing.status === tab;
 }
 
 function activeFilterCount() {
   const f = state.filters;
-  return (f.text ? 1 : 0) + (f.price ? 1 : 0) + (f.rooms ? 1 : 0) + f.areas.size + f.bonuses.size;
+  return (f.text ? 1 : 0) + (f.price ? 1 : 0) + (f.rooms ? 1 : 0) + f.areas.size + f.bonuses.size + f.sources.size;
 }
 
 function passesFilters(listing) {
@@ -205,6 +229,7 @@ function passesFilters(listing) {
   if (f.rooms && listing.rooms != null && listing.rooms < Number(f.rooms)) return false;
   if (f.areas.size && !listing.neighborhoods.some((n) => f.areas.has(n))) return false;
   for (const bonus of f.bonuses) if (!listing.bonuses.includes(bonus)) return false;
+  if (f.sources.size && !listing.sources.concat([{type: listing.sourceType}]).some((s) => f.sources.has(s.type))) return false;
   return true;
 }
 
@@ -224,7 +249,13 @@ function card(listing) {
   const link = safeUrl(listing.url) || safeUrl(listing.source);
   const area = listing.neighborhoods[0] ? L.area(listing.neighborhoods[0]) : t("telAviv");
   const isNew = Date.now() - listing.firstSeen < NEW_WINDOW_MS && !listing.fromBackfill;
-  const status = {match: ["match", t("statusMatch")], review: ["review", t("statusReview")], rejected: ["rejected", t("statusRejected")]}[listing.status];
+  const status = {
+    match: ["match", t("statusMatch")], review: ["review", t("statusReview")],
+    rejected: ["rejected", t("statusRejected")], filtered: ["filtered", t("statusFiltered")],
+  }[listing.status];
+  const places = listing.sources.length;
+  const reposted = listing.repostedAt && Date.now() - listing.repostedAt < 7 * 86400000;
+  const isJunk = listing.status === "filtered";
   const open = state.openTexts.has(listing.id);
   const spec = (value, unit) => value != null
     ? `<span>${esc(num(value))} ${unit}</span>`
@@ -239,6 +270,7 @@ function card(listing) {
         <div class="badges">
           <span class="badge ${status[0]}">${status[1]}</span>
           ${isNew ? `<span class="badge new">${t("isNew")}</span>` : ""}
+          ${reposted ? `<span class="badge">${t("reposted")}</span>` : ""}
         </div>
         <button type="button" class="save${listing.saved ? " on" : ""}" data-action="save" aria-pressed="${listing.saved}"
           aria-label="${esc(listing.saved ? t("unsave") : t("save_"))}">${icon("heart")}</button>
@@ -252,12 +284,17 @@ function card(listing) {
         ${listing.bonuses.length ? `<ul class="tags">${listing.bonuses.map((b) => `<li>${esc(L.extra(b))}</li>`).join("")}</ul>` : ""}
         ${listing.status !== "match" ? `<p class="reasons ${status[0]}">${esc(listing.reasons.map(L.reason).join(" · "))}</p>` : ""}
         ${listing.saved && listing.markedBy ? `<p class="marked">${icon("heart")}${esc(t("savedBy", listing.markedBy))}</p>` : ""}
+        ${listing.kindBy === "person" ? `<p class="kind-note">${esc(t("kindMarkedBy", listing.markedBy || ""))}</p>` : ""}
+        ${listing.ai?.by === "ai" && listing.kindBy === "ai" && !isJunk ? `<p class="kind-note">${esc(t("checkedByAi"))}</p>` : ""}
+        ${places > 1 ? `<details class="places"><summary>${esc(t("postedIn", places))}</summary><ul>${listing.sources.map((src) =>
+          `<li><a href="${esc(safeUrl(src.url) || "#")}" target="_blank" rel="noopener noreferrer" dir="auto">${esc(t("source")[src.type] || src.type)} · ${esc(src.name || "")}</a></li>`).join("")}</ul></details>` : ""}
         <p class="excerpt${open ? " open" : ""}" dir="auto">${esc(listing.text)}</p>
         <button type="button" class="link-btn more" data-action="toggle-text" aria-expanded="${open}">${open ? t("readLess") : t("readMore")}</button>
       </div>
       <div class="foot">
-        <span class="source" title="${esc(listing.sourceName)}" dir="auto">${esc(listing.sourceName || t("facebook"))}</span>
+        <span class="source" title="${esc(listing.sourceName)}" dir="auto"><b>${esc(t("source")[listing.sourceType] || "")}</b> ${esc(listing.sourceType === "facebook" || listing.sourceType === "telegram" ? listing.sourceName || "" : "")}</span>
         <span class="actions">
+          <button type="button" class="link-btn kind-btn" data-action="${isJunk ? "kind-rental" : "kind-other"}">${isJunk ? t("isApartment") : t("notApartment")}</button>
           <button type="button" class="icon-btn" data-action="hide" aria-label="${esc(listing.hidden ? t("unhide") : t("hide"))}"
             title="${esc(listing.hidden ? t("unhide") : t("hide"))}">${icon(listing.hidden ? "undo" : "hide")}</button>
           ${link ? `<a class="btn small open" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${t("openPost")}${icon("ext")}</a>` : ""}
@@ -334,7 +371,7 @@ function renderEmpty(visibleCount, allCount) {
 
 function render() {
   const all = Object.values(state.listings);
-  for (const tab of ["match", "review", "all", "saved", "hidden"]) {
+  for (const tab of ["match", "review", "all", "saved", "filtered", "hidden"]) {
     $(`count-${tab}`).textContent = num(all.filter((l) => inTab(l, tab)).length);
   }
   document.querySelectorAll(".tabs [data-tab]").forEach((b) => {
@@ -367,7 +404,7 @@ function render() {
 }
 
 function clearFilters() {
-  state.filters = {...state.filters, text: "", price: "", rooms: "", areas: new Set(), bonuses: new Set()};
+  state.filters = {...state.filters, text: "", price: "", rooms: "", areas: new Set(), bonuses: new Set(), sources: new Set()};
   $("fText").value = "";
   $("fPrice").value = "";
   $("fRooms").value = "";
@@ -382,9 +419,12 @@ function debugReport() {
   const scan = p.scan || {};
   const lines = [`extension ${p.version || "?"} · listings ${state.raw.length} · synced ${p.updatedAt ? new Date(p.updatedAt).toISOString() : "never"}`,
     `scan: ${scan.running ? "running" : "idle"} ${scan.mode || ""} · error: ${scan.lastError || "none"}`];
+  const all = Object.values(state.listings);
+  const filtered = all.filter((l) => l.status === "filtered").length;
+  lines.push(`filtered ${filtered}/${all.length} · merged places ${all.reduce((n, l) => n + Math.max(0, l.sources.length - 1), 0)} · AI ${p.ai?.usage?.calls || 0} calls${p.ai?.error ? ` · ${p.ai.error}` : ""}`);
   for (const [url, d] of Object.entries(p.debug || {})) {
-    lines.push("", `${(d.title || "").slice(0, 40)} ${url.replace("https://www.facebook.com/groups/", "g/")}`);
-    lines.push(`  units ${d.units ?? "?"} · message-nodes ${d.withMessageNode ?? "?"} · links ${d.withPermalink ?? "?"} · posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"}`);
+    lines.push("", `[${d.source || "facebook"}] ${(d.title || "").slice(0, 40)} ${url.replace("https://www.facebook.com/groups/", "g/")}${d.blocked ? " · BLOCKED" : ""}`);
+    lines.push(`  units ${d.units ?? "?"} · message-nodes ${d.withMessageNode ?? "?"} · links ${d.withPermalink ?? "?"} · posts ${d.posts ?? "?"} · unique ${d.unique ?? "?"} · new ${d.fresh ?? "?"} · merged ${d.merged ?? "?"} · filtered ${d.filtered ?? "?"}`);
     (d.samples || []).forEach((sample) => lines.push(`  > ${sample.replace(/\s+/g, " ").slice(0, 120)}`));
   }
   if (!Object.keys(p.debug || {}).length) lines.push("", t("noScanYet"));
@@ -424,6 +464,18 @@ function fillSettings() {
   document.querySelectorAll("[data-owner-only]").forEach((el) => { el.hidden = !isOwner(); });
   renderMembers();
   $("sChat").value = c.telegramChatId;
+  $("sOwnerChat").value = state.secretsFile.ownerChatId || "";
+  $("sAiKey").value = state.secretsFile.anthropicKey || "";
+  $("sRoommates").checked = !!c.criteria.includeRoommates;
+  $("sSublets").checked = !!c.criteria.includeSublets;
+  $("sSources").innerHTML = SOURCE_TYPES.map((type) => `
+    <label class="switch-row"><span><b>${esc(t("source")[type])}</b><small>${esc(t("sourceHint")[type])}</small></span>
+      <input type="checkbox" role="switch" class="switch" data-source="${type}" ${c.sources[type] !== false ? "checked" : ""}></label>`).join("");
+  $("sChannels").value = (c.sources.telegramChannels || []).join("\n");
+  const ai = state.payload.ai || {};
+  $("aiStatus").textContent = ai.error ? ai.error
+    : ai.usage?.calls ? t("aiUsage", ai.usage.calls, Math.round(((ai.usage.input || 0) * 0.1 + (ai.usage.output || 0) * 0.5) / 1e4) / 100)
+    : "";
   $("sAlertReview").checked = c.alertOnReview;
   $("sMaxPrice").value = c.criteria.maxPrice;
   $("sMinRooms").value = c.criteria.minRooms;
@@ -480,6 +532,8 @@ function readSettings() {
   const chat = $("sChat").value.split(/[,\s]+/).filter(Boolean).join(", ");
   if (chat && !chat.split(", ").every((id) => /^-?\d+$/.test(id))) throw new Error(t("badChat"));
   const areas = [...$("sAreas").querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.settingArea);
+  const aiKey = $("sAiKey").value.trim();
+  if (aiKey && !/^sk-ant-[\w-]{20,}$/.test(aiKey)) throw new Error(t("badAiKey"));
   return {
     ...state.config,
     telegramToken: token, // removed before saving; stored in the owner-only file
@@ -490,6 +544,12 @@ function readSettings() {
       minRooms: Number($("sMinRooms").value) || 0,
       minBathrooms: Number($("sMinBaths").value) || 0,
       neighborhoods: areas,
+      includeRoommates: $("sRoommates").checked,
+      includeSublets: $("sSublets").checked,
+    },
+    sources: {
+      ...Object.fromEntries([...$("sSources").querySelectorAll("input[data-source]")].map((el) => [el.dataset.source, el.checked])),
+      telegramChannels: $("sChannels").value.split(/[\n,]+/).map((c) => c.trim()).filter(Boolean).slice(0, 30),
     },
     groupUrls: groupUrls.slice(0, 60),
     intervalMinutes: Math.max(10, Number($("sInterval").value) || 20),
@@ -510,9 +570,14 @@ async function saveSettings(event) {
   const submit = $("settingsForm").querySelector('[type="submit"]');
   submit.disabled = true;
   const {telegramToken, ...publicConfig} = config;
+  const ownerChatId = $("sOwnerChat").value.replace(/\D/g, "");
+  const anthropicKey = $("sAiKey").value.trim();
   try {
     await writeConfig(publicConfig);
-    if (isOwner() && telegramToken !== (state.secretsFile.telegramToken || "")) await writeSecrets({telegramToken});
+    const f = state.secretsFile;
+    if (isOwner() && (telegramToken !== (f.telegramToken || "") || ownerChatId !== (f.ownerChatId || "") || anthropicKey !== (f.anthropicKey || ""))) {
+      await writeSecrets({telegramToken, ownerChatId, anthropicKey});
+    }
   } catch (error) {
     setSettingsStatus(t("errSave", error.message), true);
     return false;
@@ -552,7 +617,8 @@ async function addMember() {
     return setShareStatus(error.status === 401 ? t("keyInvalid") : t("keyNoAccess", error.message), true);
   }
   const link = Sync.appLink(token, state.secrets.key, {name});
-  const members = [...(state.secretsFile.members || []), {name, link, at: Date.now()}];
+  const chatId = $("mChat").value.replace(/\D/g, "");
+  const members = [...(state.secretsFile.members || []), {name, link, chatId, at: Date.now()}];
   try {
     await writeSecrets({members});
   } catch (error) {
@@ -560,6 +626,7 @@ async function addMember() {
   }
   $("mName").value = "";
   $("mToken").value = "";
+  $("mChat").value = "";
   renderMembers();
   const index = members.length - 1;
   $(`memberQr${index}`).innerHTML = qrSvg(link);
@@ -618,9 +685,9 @@ document.addEventListener("click", async (event) => {
   if (target.matches("[data-open-settings]")) return openSettings();
   if (target.dataset.memberCopy || target.dataset.memberQr || target.dataset.memberRemove) return memberAction(target);
   if (target.dataset.tab) { state.tab = target.dataset.tab; return render(); }
-  if (target.dataset.area || target.dataset.bonus) {
-    const set = target.dataset.area ? state.filters.areas : state.filters.bonuses;
-    const value = target.dataset.area || target.dataset.bonus;
+  if (target.dataset.area || target.dataset.bonus || target.dataset.source) {
+    const set = target.dataset.area ? state.filters.areas : target.dataset.bonus ? state.filters.bonuses : state.filters.sources;
+    const value = target.dataset.area || target.dataset.bonus || target.dataset.source;
     set.has(value) ? set.delete(value) : set.add(value);
     target.setAttribute("aria-pressed", String(set.has(value)));
     return render();
@@ -637,8 +704,14 @@ document.addEventListener("click", async (event) => {
     return render();
   }
   const previous = state.marks.items[id] || {};
-  const field = action === "save" ? "saved" : "hidden";
-  state.marks.items[id] = {...previous, [field]: !previous[field], by: state.secrets.name || "", at: Date.now()};
+  if (action === "kind-rental" || action === "kind-other") {
+    // A person's call on whether this is an apartment. The AI learns from these.
+    const kind = action === "kind-rental" ? "rental" : "other";
+    state.marks.items[id] = {...previous, kind: previous.kind === kind ? "" : kind, by: state.secrets.name || "", at: Date.now()};
+  } else {
+    const field = action === "save" ? "saved" : "hidden";
+    state.marks.items[id] = {...previous, [field]: !previous[field], by: state.secrets.name || "", at: Date.now()};
+  }
   reparse();
   render();
   saveMarksSoon();
@@ -698,7 +771,21 @@ $("copyDebug").addEventListener("click", async () => {
 });
 $("logout").addEventListener("click", () => {
   try { localStorage.removeItem("hunter-secrets"); } catch {}
+  location.replace(location.pathname);
+});
+$("pasteForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const secrets = secretsFromLink($("pasteLink").value.trim());
+  if (!secrets) {
+    $("pasteStatus").textContent = t("pasteBad");
+    return;
+  }
+  rememberSecrets(secrets);
   location.reload();
+});
+$("installTipClose").addEventListener("click", () => {
+  $("installTip").hidden = true;
+  try { localStorage.setItem("hunter-install-tip", "1"); } catch {}
 });
 
 const debounce = (fn, ms = 200) => { let timer; return (...a) => { clearTimeout(timer); timer = setTimeout(() => fn(...a), ms); }; };
@@ -715,6 +802,11 @@ if (!state.secrets) {
   $("gate").hidden = false;
 } else {
   $("app").hidden = false;
+  // Show the add-to-home-screen tip in iPhone Safari (not yet installed), once.
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  let tipSeen = false;
+  try { tipSeen = localStorage.getItem("hunter-install-tip") === "1"; } catch {}
+  $("installTip").hidden = !(ios && !navigator.standalone && !tipSeen);
   renderFilterChips();
   render();
   refresh();

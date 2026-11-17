@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rounds": {
     "quick": 5,
     "backfill": 45
@@ -23,5 +23,62 @@
   "authorSelector": "[data-ad-rendering-role=\"profile_name\"], h2, h3, h4, strong",
   "imageSrc": "scontent|fbcdn",
   "minImageWidth": 160,
-  "minTextLength": 25
+  "minTextLength": 25,
+  "sources": {
+    "yad2": {
+      "url": "https://www.yad2.co.il/realestate/rent?topArea=2&area=1&city=5000&minRooms={minRooms}&maxPrice={maxPrice}",
+      "itemLink": "yad2\\.co\\.il\\/realestate\\/item\\/(?:[\\w-]+\\/)?([\\w]+)",
+      "maxClimb": 6,
+      "imageSrc": "img\\.yad2|yad2",
+      "prefix": "להשכרה (יד2): ",
+      "blockedText": "(Are you for real|ShieldSquare|captcha|אנא אשרו שאינכם רובוט)",
+      "rounds": {
+        "quick": 2,
+        "backfill": 4
+      }
+    },
+    "madlan": {
+      "url": "https://www.madlan.co.il/for-rent/%D7%AA%D7%9C-%D7%90%D7%91%D7%99%D7%91-%D7%99%D7%A4%D7%95-%D7%99%D7%A9%D7%A8%D7%90%D7%9C?filters=_{minRooms}-_0-{maxPrice}",
+      "itemLink": "madlan\\.co\\.il\\/listings\\/([\\w-]+)",
+      "maxClimb": 6,
+      "prefix": "להשכרה (מדלן): ",
+      "blockedText": "(captcha|Access denied|אנא אשרו)",
+      "rounds": {
+        "quick": 2,
+        "backfill": 4
+      }
+    },
+    "homeless": {
+      "url": "https://www.homeless.co.il/rent/",
+      "itemLink": "homeless\\.co\\.il\\/rent\\/viewad,(\\d+)",
+      "maxClimb": 4,
+      "prefix": "להשכרה (הומלס): ",
+      "rounds": {
+        "quick": 1,
+        "backfill": 2
+      }
+    },
+    "komo": {
+      "url": "https://www.komo.co.il/code/nadlan/apartments-for-rent.asp?cityName=%D7%AA%D7%9C+%D7%90%D7%91%D7%99%D7%91",
+      "itemLink": "komo\\.co\\.il\\/code\\/nadlan\\/details\\/?\\?[^#]*modaaNum=(\\d+)",
+      "maxClimb": 5,
+      "prefix": "להשכרה (קומו): ",
+      "rounds": {
+        "quick": 1,
+        "backfill": 2
+      }
+    },
+    "telegram": {
+      "messageSelector": ".tgme_widget_message",
+      "textSelector": ".tgme_widget_message_text",
+      "photoSelector": ".tgme_widget_message_photo_wrap",
+      "titleSelector": ".tgme_channel_info_header_title",
+      "minTextLength": 25,
+      "rounds": {
+        "quick": 1,
+        "backfill": 4
+      }
+    }
+  },
+  "skipSponsored": "^(sponsored|ממומן|בחסות)$"
 }
