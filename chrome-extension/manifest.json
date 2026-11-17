@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Apartment Hunter TLV - Local Facebook Monitor",
+  "version": "0.1.0",
+  "description": "Read-only monitoring of selected Facebook groups for apartment posts.",
+  "permissions": ["alarms", "storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://www.facebook.com/*",
+    "https://facebook.com/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {"service_worker": "background.js"},
+  "options_page": "options.html",
+  "action": {"default_title": "Apartment Hunter TLV"}
+}
